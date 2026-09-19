@@ -10,7 +10,7 @@
     "dev": "vite --host 0.0.0.0 --port 5173",
     "build": "tsc --noEmit && vite build",
     "start": "node app/server.mjs",
-    "test": "vitest run",
+    "test": "vitest run src",
     "test:server": "node --test tests/*.test.mjs",
     "core:build": "sh scripts/rust.sh build",
     "core:test": "sh scripts/rust.sh test",
