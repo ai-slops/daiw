@@ -42,9 +42,16 @@ export class ProjectStore {
     const stack = this.stacks(projectId)[direction];
     const revision = stack.at(-1);
     if (!revision) throw new ServiceError('EmptyHistory', `Nothing to ${direction}.`, 409);
-    const row = this.db.prepare('SELECT payload FROM revisions WHERE revision=? AND project_id=?').get(revision, projectId);
+    return this.getRevision(projectId, revision);
+  }
+  getRevision(projectId, revision) {
+    const row = this.db.prepare('SELECT payload,hash FROM revisions WHERE revision=? AND project_id=?').get(revision, projectId);
     if (!row) throw new ServiceError('CorruptProject', 'History revision is missing.', 422);
+    if (createHash('sha256').update(row.payload).digest('hex') !== row.hash) throw new ServiceError('CorruptProject', 'History revision integrity check failed.', 422);
     return JSON.parse(row.payload);
+  }
+  hasRequest(projectId, requestId) {
+    return Boolean(this.db.prepare('SELECT 1 FROM journal WHERE project_id=? AND request_id=?').get(projectId, requestId));
   }
   stacks(projectId) {
     const row = this.db.prepare('SELECT undo,redo FROM undo_stack WHERE project_id=?').get(projectId);
