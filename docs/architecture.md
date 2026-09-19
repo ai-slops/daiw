@@ -32,6 +32,8 @@ There is no automatic migration from an unknown schema. Future migrations must c
 
 Original audio is stored at `data/objects/<sha256>`. Blob writes use a temporary file, flush, and atomic rename. SQLite stores asset metadata; project regions refer to stable asset IDs, never original file paths. Decoded PCM lives in `data/cache/audio`; WAV previews in `data/cache/render`. Deleting caches must not destroy a project. Missing or corrupted originals are explicit errors, never silence.
 
+On POSIX systems the containing directory is synced after rename. Windows uses flushed files and atomic rename, but equivalent power-loss directory-entry durability has not been verified. Process-crash recovery is tested separately from hardware/power-loss durability.
+
 Original-media hashing is SHA-256 in this host; canonical musical fingerprints use the Rust domain's hashing policy. Algorithms are kept distinct rather than pretending hashes are interchangeable. This is an explicit change from the design document's recommended all-BLAKE3 storage choice, made to use Node's standard-library integrity implementation at the storage boundary.
 
 Render keys include the effective snapshot, source PCM, and renderer profile/version. The renderer consumes the same effective notes used by explanation and editing views. Node does not synthesize audio.

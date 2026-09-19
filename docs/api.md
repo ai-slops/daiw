@@ -39,12 +39,13 @@ Agents may query, dry-run, and create instance-scoped proposals. They cannot cal
 
 ## Audio and export
 
-- `POST /api/projects/:id/import-audio`: multipart `file`, `trackId`, `start` (beats), and `expectedRevision`. Original sources are immutable. Limits: 20 MB upload, 180 seconds decoded audio.
-- `GET /api/projects/:id/render.wav`: deterministic stereo PCM export; optional `proposalId` selects a proposal snapshot. `X-DAIW-Revision` binds output to the rendered revision.
+- `POST /api/projects/:id/import-audio`: multipart `file`, `trackId`, `start` (beats), and `expectedRevision`. Send `X-DAIW-Idempotency` to safely replay a lost upload response. Original sources are immutable. Limits: 20 MB upload, 180 seconds, and 4 million decoded interleaved samples per source.
+- `GET /api/projects/:id/render.wav`: deterministic stereo PCM export; optional `proposalId` selects a proposal snapshot. Optional `expectedRevision` rejects stale audition requests. The browser checks `X-DAIW-Revision` before installing audio buffers.
+- `GET /api/projects/:id/assets/:assetId/peaks`: 128 measured waveform bins plus source metadata. Missing/corrupt sources are errors, not fabricated waveforms.
 - `GET /api/projects/:id/export`: canonical native JSON. This is not a portable media archive; source blobs remain in the project store.
 - `project.import`: explicitly validate an exported project and create a new project identity. Missing source assets are reported when audio is resolved/rendered.
 
-Offline rendering is limited to three-minute arrangements in this initial host to bound memory and processing. Larger sessions and disk streaming are planned in stage 2.
+Offline rendering is limited to three-minute arrangements and 8 million source PCM samples in this initial host to bound memory and processing. These are explicit implementation limits, not claims that full-session streaming is complete. Larger sessions and disk streaming remain an outstanding part of the original stage-1 target.
 
 ## Error semantics
 
@@ -60,3 +61,6 @@ Offline rendering is limited to three-minute arrangements in this initial host t
 | `DAIW_CORE_BINARY` | `target/debug/daiw-core` | Rust command worker |
 | `DAIW_RENDER_BINARY` | `target/debug/daiw-render` | Rust renderer/decoder |
 | `DAIW_AGENT_TOKEN` | unset | Enables separately restricted agent requests |
+| `DAIW_ALLOWED_ORIGINS` | unset | Comma-separated explicit public origins for a trusted reverse proxy |
+
+The host rejects unrecognized Host headers, including same-origin DNS-rebinding attempts. Only loopback proxy connections may supply forwarded hosts. In DIM, the URL returned by `dim-development-service expose` is registered automatically as an allowed origin; arbitrary forwarded hostnames are not trusted.

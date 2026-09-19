@@ -6,9 +6,9 @@ All JSON fields use camelCase. Rust is the sole canonical domain authority. Node
 
 `Project`: `{ id, name, revision, tempo, meter:[4,4], definitions:Definition[], instances:Instance[], tracks:Track[], modifiers:Modifier[], proposals:Proposal[], history:HistoryEntry[] }`.
 
-`Note`: `{ id, start, duration, pitch, velocity }`. Beat values on the wire are numbers quantized to 1/960 beat by the boundary; Rust stores/validates exact ticks internally or rejects off-grid values. Pitch may be fractional cents expressed in semitones.
+`Note`: `{ id, start, duration, pitch, velocity }`. Velocity is normalized `0..1`, not MIDI `0..127`. Beat values on the wire are numbers quantized to 1/960 beat by the boundary; Rust stores/validates exact ticks internally or rejects off-grid values. Pitch may be fractional cents expressed in semitones.
 
-`Definition`: `{ id, name, length, notes:Note[], revision }`.
+`Definition`: `{ id, name, length, notes:Note[], revision }`. Definition revision is a positive integer; project commit revisions are strings.
 
 `Track`: `{ id, name, role, color, instrument, gain, pan, mute, solo, cutoff }`. Instruments: `synth`, `bass`, `kick`, `snare`, `hat`, `pad`, `sample`. Gain is dB, pan -1..1, cutoff Hz.
 
@@ -22,7 +22,7 @@ All JSON fields use camelCase. Rust is the sole canonical domain authority. Node
 
 `HistoryEntry`: `{id,message,author,revision}`. Revisions and IDs are strings, never array indices. Synthetic fixture IDs can be descriptive; new entities use random UUIDs supplied by Rust.
 
-`EffectiveNote`: Note plus `{instanceId,trackId,origin:{definitionId,noteId,modifierIds:string[]}}`; start is project beat. `Snapshot`: `{revision,tempo,length,tracks:Track[],notes:EffectiveNote[],regions:AudioRegion[]}`. `AudioRegion`: `{id,trackId,assetId,start,duration,gain,sourceOffset}` (beats except sourceOffset seconds). `Project` may include `regions:AudioRegion[]` and `assets:Asset[]` with defaults. `Asset`: `{id,name,hash,frames,sampleRate,channels}`.
+`EffectiveNote`: Note plus `{instanceId,trackId,origin:{definitionId,noteId,modifierIds:string[]}}`; start is project beat. `Snapshot`: `{revision,tempo,length,tracks:Track[],notes:EffectiveNote[],regions:AudioRegion[]}`. `AudioRegion`: `{id,trackId,assetId,start,duration,gain,sourceOffset}` (beats except sourceOffset seconds, gain in dB). `Project` may include `regions:AudioRegion[]` and `assets:Asset[]` with defaults. `Asset`: `{id,name,hash,frames,sampleRate,channels}`.
 
 ## Worker protocol
 
