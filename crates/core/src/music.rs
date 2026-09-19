@@ -1,0 +1,120 @@
+use crate::ids::{DefinitionId, InstanceId, ModifierId, NoteId, TrackId};
+use crate::time::Tick;
+use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Note {
+    pub id: NoteId,
+    pub start: Tick,
+    pub duration: Tick,
+    pub pitch: f64,
+    pub velocity: f64,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Definition {
+    pub id: DefinitionId,
+    pub name: String,
+    pub length: Tick,
+    pub notes: Vec<Note>,
+    pub revision: u64,
+    #[serde(default)]
+    pub slots: BTreeMap<String, NoteSlot>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteSlot {
+    pub start: Tick,
+    pub end: Tick,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Instrument {
+    Synth,
+    Bass,
+    Kick,
+    Snare,
+    Hat,
+    Pad,
+    Sample,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Track {
+    pub id: TrackId,
+    pub name: String,
+    pub role: String,
+    pub color: String,
+    pub instrument: Instrument,
+    pub gain: f64,
+    pub pan: f64,
+    pub mute: bool,
+    pub solo: bool,
+    pub cutoff: f64,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Parameter {
+    Cutoff,
+    Pan,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", tag = "type")]
+pub enum Operation {
+    Transpose { semitones: f64 },
+    Velocity { factor: f64 },
+    Gain { db: f64 },
+    AddNotes { notes: Vec<Note> },
+    ReplaceSlot { slot: String, notes: Vec<Note> },
+    SetParameter { parameter: Parameter, value: f64 },
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Modifier {
+    pub id: ModifierId,
+    pub name: String,
+    pub operations: Vec<Operation>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Instance {
+    pub id: InstanceId,
+    pub name: String,
+    pub definition_id: DefinitionId,
+    pub track_id: TrackId,
+    pub start: Tick,
+    pub length: Tick,
+    pub modifiers: Vec<ModifierId>,
+    pub overrides: Vec<Operation>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteOrigin {
+    pub definition_id: DefinitionId,
+    pub note_id: NoteId,
+    pub modifier_ids: Vec<ModifierId>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EffectiveNote {
+    pub id: NoteId,
+    pub start: Tick,
+    pub duration: Tick,
+    pub pitch: f64,
+    pub velocity: f64,
+    pub instance_id: InstanceId,
+    pub track_id: TrackId,
+    pub origin: NoteOrigin,
+}
