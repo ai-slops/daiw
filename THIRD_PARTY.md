@@ -15,7 +15,13 @@ No audio from third-party songs, commercial sessions, or plugin binaries is incl
 | thiserror | Domain error types | MIT / Apache-2.0 |
 | BLAKE3 | Canonical fingerprints | CC0-1.0 / Apache-2.0 / Apache-2.0 with LLVM exception |
 | SQLite via Node.js | Transactional persistence | Public domain; Node.js MIT |
+| Symphonia | WAV/AIFF/FLAC decoding | MPL-2.0 |
+| CPAL | Optional native audio output | Apache-2.0 |
+| Electron | Sandboxed desktop shell | MIT, with bundled Chromium/Node third-party notices |
+| UUID | Stable newly created entity IDs | Apache-2.0 / MIT |
 
 The exact dependency graph is pinned in `package-lock.json` and `Cargo.lock`. Transitive licenses must be checked from these lockfiles before binary redistribution. `npm sbom --sbom-format cyclonedx` produces the JavaScript SBOM. `cargo metadata --format-version 1` includes the Rust package/license inventory. Native codec, audio backend, and Electron dependencies are documented alongside their implementation; their distribution obligations are not waived by this table.
+
+Symphonia's MPL-2.0 obligations apply to its covered source files. Preserve its notices and make the corresponding covered source available when distributing binaries. We do not copy or modify codec implementations in this repository. Electron distributions must retain Electron and Chromium's bundled license notices.
 
 Existing `.dim` files are environment infrastructure preserved as supplied, not newly relicensed source.

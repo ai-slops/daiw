@@ -1,0 +1,49 @@
+name: Validate DAIW
+on: [push, pull_request]
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: dtolnay/rust-toolchain@1.94.0
+        with:
+          components: rustfmt, clippy
+      - run: sudo apt-get update && sudo apt-get install -y libasound2-dev
+      - run: npm ci --ignore-scripts
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+      - run: cargo test --workspace --all-features
+      - run: cargo build --workspace --all-features
+      - run: npm run test:server
+      - run: npm run build
+      - run: npm test
+      - run: npx playwright install --with-deps chromium
+      - name: Exercise the browser workflow
+        shell: bash
+        run: |
+          node app/server.mjs > /tmp/daiw-ci.log 2>&1 &
+          server=$!
+          trap 'kill "$server" 2>/dev/null || true' EXIT
+          node --input-type=module -e "import {setTimeout} from 'node:timers/promises'; for(let i=0;i<100;i++){try{if((await fetch('http://127.0.0.1:3000/api/health')).ok)process.exit(0)}catch(e){if(!(e instanceof TypeError))throw e}await setTimeout(100)}throw new Error('DAIW did not start')"
+          DAIW_URL=http://127.0.0.1:3000 node tests/studio.e2e.mjs
+      - run: npm audit --omit=dev
+      - run: node scripts/check-licenses.mjs
+      - run: npm sbom --sbom-format cyclonedx > javascript-sbom.json
+      - run: cargo metadata --format-version 1 > rust-dependencies.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dependency-inventory
+          path: |
+            javascript-sbom.json
+            rust-dependencies.json
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.94.0
+      - run: cargo test --workspace --all-features
+      - run: cargo build --workspace --all-features
