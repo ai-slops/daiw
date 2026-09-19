@@ -18,6 +18,8 @@ docker exec "$CONTAINER" cargo "$@"
 docker cp "$CONTAINER:/work/Cargo.lock" ./Cargo.lock
 if [ "$ACTION" = build ]; then
   mkdir -p target/debug
-  docker cp "$CONTAINER:/work/target/debug/daiw-core" target/debug/daiw-core
-  docker cp "$CONTAINER:/work/target/debug/daiw-render" target/debug/daiw-render
+  docker cp "$CONTAINER:/work/target/debug/daiw-core" target/debug/daiw-core.next
+  docker cp "$CONTAINER:/work/target/debug/daiw-render" target/debug/daiw-render.next
+  mv target/debug/daiw-core.next target/debug/daiw-core
+  mv target/debug/daiw-render.next target/debug/daiw-render
 fi
