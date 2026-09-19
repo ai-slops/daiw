@@ -1,0 +1,36 @@
+[package]
+name = "daiw-audio"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+default = []
+native = ["dep:cpal"]
+
+[dependencies]
+cpal = { version = "0.15", optional = true }
+serde.workspace = true
+serde_json.workspace = true
+rtrb = "0.3"
+symphonia = { version = "0.5", features = ["aiff", "flac", "pcm", "wav"] }
+thiserror.workspace = true
+
+[dev-dependencies]
+stats_alloc = "0.1"
+
+[lib]
+name = "daiw_audio"
+path = "src/lib.rs"
+
+[[bin]]
+name = "daiw-render"
+path = "src/bin/daiw-render.rs"
+
+[[bin]]
+name = "daiw-play"
+path = "src/bin/daiw-play.rs"
+required-features = ["native"]
+
+[lints]
+workspace = true
