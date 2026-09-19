@@ -1,0 +1,27 @@
+{
+  "name": "daiw",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "dev": "vite --host 0.0.0.0 --port 5173",
+    "build": "tsc --noEmit && vite build",
+    "start": "node app/server.mjs",
+    "test": "vitest run",
+    "test:server": "node --test tests/*.test.mjs",
+    "core:build": "sh scripts/rust.sh build",
+    "core:test": "sh scripts/rust.sh test",
+    "desktop": "electron desktop/main.cjs"
+  },
+  "dependencies": {
+    "react": "^19.2.0", "react-dom": "^19.2.0", "lucide-react": "^0.577.0",
+    "ky": "^1.14.0", "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3", "vite": "^7.3.1", "@vitejs/plugin-react": "^5.1.4",
+    "@types/node": "^24.10.0", "@types/react": "^19.2.0", "@types/react-dom": "^19.2.0",
+    "vitest": "^4.0.18", "@playwright/test": "^1.58.2", "@biomejs/biome": "^2.4.0",
+    "react-grab": "^0.0.98", "react-scan": "^0.4.3", "react-doctor": "^0.0.29"
+  }
+}

@@ -1,0 +1,9 @@
+node_modules/
+dist/
+target/
+data/
+.codegraph/
+.omo/
+*.log
+test-results/
+playwright-report/
