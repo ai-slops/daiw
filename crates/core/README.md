@@ -15,11 +15,15 @@ One-shot commands are also available:
 "$CORE" --help
 "$CORE" fixture "CLI Demo" > project.json
 "$CORE" validate < project.json
+"$CORE" export < project.json > project.daiw.json
+"$CORE" validate < project.daiw.json
 "$CORE" explain instance-chorus-a < project.json
 printf '%s' '{"state":PROJECT,"expectedRevision":"REVISION","command":{"type":"setTempo","tempo":120}}' | "$CORE" dry-run
 ```
 
 The examples below use `jq` to keep an exported project in `$STATE`. IDs and revisions are strings, not array positions.
+
+For worker requests, `$STATE` must be raw canonical Project (use `.content` from a native envelope). One-shot `validate`, `explain`, `export` and dry-run input accept native documents. `project.export` returns the v1 envelope; `project.import` accepts it under `params.project` and assigns fresh identity. See [native exchange and note selection](../../docs/native-exchange.md). `project.queryNotes` is a read-only query; `transformSelectedNotes` is also a supported typed command under normal dry-run/human-apply rules.
 
 ## Project methods
 
@@ -63,7 +67,18 @@ jq -nc --argjson state "$STATE" --arg revision "$REVISION" '{id:"12",principal:"
 jq -nc --argjson state "$STATE" --arg revision "$REVISION" '{id:"13",principal:"human",state:$state,method:"change.apply",params:{expectedRevision:$revision,command:{type:"renameProject",name:"New name"}}}' | "$CORE"
 ```
 
-Supported command tags are `setTempo`, `renameProject`, `addTrack`, `setTrack`, `addDefinition`, `instantiate`, `moveInstance`, `duplicateInstance`, `deleteInstance`, `editNotes`, `applyModifier`, `removeModifier`, `createModifier`, `addAudioRegion`, and `removeAudioRegion`. Their fields are defined in `docs/contract.md`.
+Supported command tags are `setTempo`, `renameProject`, `addTrack`, `setTrack`, `addDefinition`, `instantiate`, `moveInstance`, `duplicateInstance`, `deleteInstance`, `editNotes`, `applyModifier`, `setModifierOrdering`, `rebaseModifier`, `removeModifier`, `createModifier`, `addAudioRegion`, and `removeAudioRegion`. Their fields are defined in `docs/contract.md`.
+
+New reusable slot-modifier attachments retain source revision, slot ranges, source note IDs, and cardinality. Source drift requires an explicit human rebase; repeating `applyModifier` is not a refresh. Preview it first:
+
+```sh
+jq -nc --argjson state "$STATE" --arg revision "$REVISION" --arg instanceId "$INSTANCE_ID" --arg modifierId "$MODIFIER_ID" '{id:"rebase-preview",principal:"agent",state:$state,method:"change.dryRun",params:{expectedRevision:$revision,command:{type:"rebaseModifier",instanceId:$instanceId,modifierId:$modifierId}}}' | "$CORE"
+jq -nc --argjson state "$STATE" --arg revision "$REVISION" --arg instanceId "$INSTANCE_ID" --arg modifierId "$MODIFIER_ID" '{id:"rebase-apply",principal:"human",state:$state,method:"change.apply",params:{expectedRevision:$revision,command:{type:"rebaseModifier",instanceId:$instanceId,modifierId:$modifierId}}}' | "$CORE"
+```
+
+The command changes binding metadata only. Legacy slot attachments remain readable but appear in `unboundModifierIds`; explicit rebase upgrades them. Only canonical `replaceSlot` selectors are supported by this strong-binding contract. See [binding semantics and downgrade limitations](../../docs/contract.md#persisted-strong-slot-modifier-bindings).
+
+For explicit dependency ordering, use `setModifierOrdering` with `{instanceId,ordering:{edges:[{before,after}]}}`. For example, add-notes before transpose ensures the newly added notes are transposed too. Missing ordering preserves legacy array execution; an explicit empty edge list requires independent modifiers. `project.explain.modifierPlan` reports the actual order and core-derived read/write resources. New attachments can supply an optional complete `ordering` graph atomically through `applyModifier`. See [the ordering contract](../../docs/contract.md#explicit-modifier-dependency-ordering) for cycles, conflicts, removal behavior and downgrade restrictions.
 
 ## Proposal methods
 

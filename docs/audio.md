@@ -23,7 +23,24 @@ The accepted values are a bare `Snapshot`, the host's flattened `{...Snapshot, a
 }
 ```
 
-Output is deterministic 48 kHz, stereo, signed 16-bit little-endian PCM. Synth, bass, kick, snare, hat, and pad notes use deterministic built-in voices. Each track applies mute/solo, dB gain, constant-power pan, and a one-pole low-pass. Sample regions preserve stereo, support mono or interleaved PCM, sample-rate conversion, beat placement, positive duration, dB region gain from -96 through +24 (`0` is unity), and source offsets in seconds. Missing assets, unknown track references, non-finite or out-of-range values, and malformed interleaved PCM are explicit render errors.
+Output is deterministic 48 kHz, stereo, signed 16-bit little-endian PCM. Synth, bass, kick, snare, hat, and pad notes use deterministic built-in voices. Each track applies mute/solo, dB gain, constant-power pan, and a one-pole low-pass. Sample regions preserve stereo, support mono or interleaved PCM, sample-rate conversion, beat placement, positive duration, dB region gain from -96 through +24 (`0` is unity), and source offsets in seconds. Missing assets, unknown track references, duplicate effective note IDs, invalid checked numeric inputs, and malformed interleaved PCM are explicit render errors.
+
+The core now validates emitted note identity, pitch/velocity and timing after modifiers, repetition and crop, including a global ID check across instances. HTTP rendering obtains that validated snapshot before looking up a render cache. The standalone renderer additionally rejects duplicate IDs at its own input boundary; existing NaN/Infinity rejection remains in place. Ordinary fractional pitch such as `60.25` is covered by a finite, non-silent render regression.
+
+Input/data validation and DSP validation are separate. The renderer now rejects unrepresentable frequency/phase, non-finite gain conversion, non-finite rendered track samples and non-finite master samples. The public WAV encoder independently rejects NaN/Infinity before allocation and quantization. Invalid values are not silently replaced with zero, silence or full-scale PCM. Ordinary finite samples still clip to `[-1,1]` at PCM encoding, preserving prior quantization.
+
+### Numeric and output-memory boundaries
+
+- `Synth`, `Bass` and `Pad` require a finite positive pitch-derived frequency and finite phase at the last actually rendered sample. No arbitrary integer-MIDI or Nyquist-range clamp is introduced; this is numeric validity, not an anti-aliasing guarantee.
+- Muted/non-solo tracks, empty/clipped-out notes and placeholder `Sample` notes do not evaluate unused pitch arithmetic. Kick/snare/hat retain their pitch-independent synthesis. Global input validation still rejects malformed/non-finite input fields even on unused data.
+- Clipped notes retain their nominal rounded duration as the envelope denominator. Existing beat-to-frame and source-offset rounding order is preserved. Derived frame indices must be finite, nonnegative and representable rather than relying on saturating float casts.
+- Source resampling uses checked integer arithmetic. Representable offsets past the source remain ordinary source-end silence; unrepresentable offsets fail. Region multiplication, filter output and master accumulation cannot publish non-finite samples.
+- Finite linear-gain underflow to zero remains silence. Overflowing linear or pan gains fail explicitly. Finite internal headroom above unity is allowed; the WAV encoder clips it as before.
+- `MAX_RENDER_FRAMES` is **8,640,000 stereo frames** for the Rust renderer, checked before allocating output buffers. This is 180 seconds at 48 kHz or 90 seconds at 96 kHz. The existing HTTP endpoint remains fixed at 48 kHz and separately limits duration to 180 seconds.
+- Master and a reused scratch track buffer are allocated fallibly. At the cap they request about **138.24 MB total** for two stereo `f32` buffers; later master-plus-WAV storage is about 103.68 MB. These numbers exclude assets, input JSON, host/cache buffers and allocator overhead, and are not a total process-memory or CPU guarantee.
+- Rust reports `InvalidFrameCount`, `RenderTooLarge`, `Allocation`, or `InvalidValue` with fields such as `frequency`, `phase`, `linearGain`, `panGain`, and `samples`. `WavTooLarge` continues to protect WAV header/payload arithmetic. Allocation failures are not mislabeled as numeric failures.
+
+All checks run in offline/control-thread rendering or encoding, not in the audio callback. A successful render returns finite samples, and a failed render does not return partial audio. Restart the host after deploying a new renderer so `MediaStore.initialize` refreshes its binary fingerprint; render cache keys include that fingerprint. The host writes a WAV/cache record only after successful worker completion.
 
 The host can decode WAV, AIFF, or FLAC uploads into its content-addressed PCM cache without a second binary:
 
