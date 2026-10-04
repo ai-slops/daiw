@@ -5,9 +5,13 @@ import {
 	InstanceSchema,
 	ModifierSchema,
 	ModifierOrderingSchema,
+	MeterMapSchema,
+	MeterSchema,
 	NoteSchema,
 	OperationSchema,
 	ProjectSchema,
+	TempoMapSchema,
+	TempoSchema,
 	TrackSchema,
 } from "./project";
 
@@ -120,7 +124,10 @@ export const DryRunResultSchema = z.object({
 
 export const SnapshotSchema = z.object({
 	revision: z.string(),
-	tempo: z.number(),
+	tempo: TempoSchema,
+	meter: MeterSchema.default([4, 4]),
+	tempoMap: TempoMapSchema.optional(),
+	meterMap: MeterMapSchema.optional(),
 	length: z.number(),
 	tracks: z.array(TrackSchema),
 	notes: z.array(
@@ -145,6 +152,14 @@ export const SnapshotSchema = z.object({
 			sourceOffset: z.number(),
 		}),
 	),
+}).superRefine((snapshot, context) => {
+	if (snapshot.tempoMap !== undefined && snapshot.tempoMap.points[0]?.bpm !== snapshot.tempo) {
+		context.addIssue({ code: "custom", path: ["tempoMap"], message: "tempo must equal the first tempo-map point" });
+	}
+	const firstMeter = snapshot.meterMap?.points[0];
+	if (firstMeter !== undefined && (firstMeter.numerator !== snapshot.meter[0] || firstMeter.denominator !== snapshot.meter[1])) {
+		context.addIssue({ code: "custom", path: ["meterMap"], message: "meter must equal the first meter-map point" });
+	}
 });
 export const SnapshotResultSchema = z.object({ snapshot: SnapshotSchema });
 export const WaveformSchema = z.object({
