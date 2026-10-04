@@ -5,15 +5,22 @@ import {
 	Play,
 	Repeat2,
 	Rewind,
+	SlidersHorizontal,
 	Square,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { secondsAtBeat } from "../../shared/timing.mjs";
 import type { AudioEngineState } from "../audio";
+import type { Project } from "../domain/project";
 import { IconButton } from "./primitives";
+import {
+	formatMusicalPosition,
+	meterAtBeat,
+	nextBar,
+	previousBar,
+} from "./transport-timing";
 
 type TransportProps = {
-	readonly tempo: number;
-	readonly onTempo: (tempo: number) => void;
+	readonly timing: Pick<Project, "tempo" | "meter" | "tempoMap" | "meterMap">;
 	readonly audio: AudioEngineState;
 	readonly busy: boolean;
 	readonly onToggle: () => void;
@@ -21,11 +28,11 @@ type TransportProps = {
 	readonly onSeek: (beat: number) => void;
 	readonly onLoop: () => void;
 	readonly onRender: () => void;
+	readonly onTiming: () => void;
 };
 
 export const Transport = ({
-	tempo,
-	onTempo,
+	timing,
 	audio,
 	busy,
 	onToggle,
@@ -33,30 +40,21 @@ export const Transport = ({
 	onSeek,
 	onLoop,
 	onRender,
+	onTiming,
 }: TransportProps) => {
 	const playing = audio.status === "playing";
 	const position = audio.positionBeat;
-	const [tempoDraft, setTempoDraft] = useState(String(tempo));
-	const editingTempo = useRef(false);
-	useEffect(() => {
-		if (!editingTempo.current) setTempoDraft(String(tempo));
-	}, [tempo]);
-	const commitTempo = () => {
-		editingTempo.current = false;
-		const nextTempo = Number(tempoDraft);
-		if (!Number.isFinite(nextTempo) || nextTempo < 30 || nextTempo > 300) {
-			setTempoDraft(String(tempo));
-			return;
-		}
-		if (nextTempo !== tempo) onTempo(nextTempo);
-	};
+	const meterTiming = timing.meterMap ?? timing.meter;
+	const tempoTiming = timing.tempoMap ?? timing.tempo;
+	const [numerator, denominator] = meterAtBeat(position, meterTiming);
+	const musicalPosition = formatMusicalPosition(position, meterTiming);
 	return (
 		<section className="transport" aria-label="Transport controls">
 			<div className="transport__group">
 				<IconButton
-					label="Jump to start"
+					label="Previous bar"
 					icon={Rewind}
-					onClick={() => onSeek(0)}
+					onClick={() => onSeek(previousBar(position, meterTiming))}
 				/>
 				<IconButton
 					label={playing ? "Pause playback" : "Start playback"}
@@ -67,9 +65,9 @@ export const Transport = ({
 				/>
 				<IconButton label="Stop playback" icon={Square} onClick={onStop} />
 				<IconButton
-					label="Jump forward four bars"
+					label="Next bar"
 					icon={FastForward}
-					onClick={() => onSeek(position + 16)}
+					onClick={() => onSeek(nextBar(position, meterTiming))}
 				/>
 				<IconButton
 					label="Loop current four bars"
@@ -83,31 +81,23 @@ export const Transport = ({
 					onClick={onRender}
 				/>
 			</div>
-			<output className="transport__position" aria-label="Current position">
-				{String(Math.floor(position / 4) + 1).padStart(3, "0")} <span>/</span>{" "}
-				{String(Math.floor(position % 4) + 1).padStart(2, "0")} <span>/</span>{" "}
-				000
+			<output
+				className="transport__position"
+				aria-label="Current musical position"
+				title={`${secondsAtBeat(position, tempoTiming).toFixed(2)} seconds`}
+			>
+				{musicalPosition}
 			</output>
-			<label className="tempo-control">
-				<span>TEMPO</span>
-				<input
-					type="number"
-					min="30"
-					max="300"
-					value={tempoDraft}
-					onFocus={() => {
-						editingTempo.current = true;
-					}}
-					onChange={(event) => setTempoDraft(event.currentTarget.value)}
-					onBlur={commitTempo}
-					onKeyDown={(event) => {
-						if (event.key === "Enter") event.currentTarget.blur();
-					}}
-				/>
-				<small>BPM</small>
-			</label>
+			<button type="button" className="tempo-control" onClick={onTiming}>
+				<SlidersHorizontal aria-hidden="true" size="var(--icon-sm)" />
+				<span>
+					{timing.tempo} BPM{timing.tempoMap === undefined ? "" : " · MAP"}
+				</span>
+			</button>
 			<div className="meter-control">
-				<span>4 / 4</span>
+				<span>
+					{numerator} / {denominator}
+				</span>
 				<small>METER</small>
 			</div>
 			<div className="transport__engine">

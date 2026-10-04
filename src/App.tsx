@@ -12,6 +12,7 @@ import {
 	InspectorWorkspace,
 } from "./components/ResponsivePanels";
 import { StudioRail, type Workspace } from "./components/StudioRail";
+import { TimingDialog } from "./components/TimingDialog";
 import { TopBar } from "./components/TopBar";
 import { Transport } from "./components/Transport";
 import type { Note } from "./domain/project";
@@ -50,6 +51,7 @@ const LoadedStudio = ({ studio, project }: LoadedStudioProps) => {
 	const [selectedId, setSelectedId] = useState<string>();
 	const [workspace, setWorkspace] = useState<Workspace>("arrangement");
 	const [projectsOpen, setProjectsOpen] = useState(false);
+	const [timingOpen, setTimingOpen] = useState(false);
 	const fileInput = useRef<HTMLInputElement>(null);
 	const audio = useAudio(project);
 	const selected = useMemo(
@@ -128,11 +130,7 @@ const LoadedStudio = ({ studio, project }: LoadedStudioProps) => {
 			<aside className="browser-slot">{browserPanel}</aside>
 			<main className="studio-main" id="studio-main">
 				<Transport
-					tempo={project.tempo}
-					onTempo={(tempo) =>
-						Number.isFinite(tempo) &&
-						void studio.command({ type: "setTempo", tempo })
-					}
+					timing={project}
 					audio={audio.state}
 					busy={audio.busy}
 					onToggle={() => void audio.toggle()}
@@ -140,6 +138,7 @@ const LoadedStudio = ({ studio, project }: LoadedStudioProps) => {
 					onSeek={audio.seek}
 					onLoop={audio.toggleLoop}
 					onRender={() => downloadMix(project.id)}
+					onTiming={() => setTimingOpen(true)}
 				/>
 				{workspace === "arrangement" ? (
 					<>
@@ -202,7 +201,7 @@ const LoadedStudio = ({ studio, project }: LoadedStudioProps) => {
 				{workspace === "inspector" ? inspectorPanel : null}
 			</main>
 			<aside className="inspector-slot">{inspectorPanel}</aside>
-			{studio.error === undefined || projectsOpen ? null : (
+			{studio.error === undefined || projectsOpen || timingOpen ? null : (
 				<div className="error-toast" role="alert">
 					<AlertTriangle aria-hidden="true" />
 					<span>{studio.error}</span>
@@ -234,6 +233,21 @@ const LoadedStudio = ({ studio, project }: LoadedStudioProps) => {
 				busy={studio.busy}
 				error={studio.error}
 				onClearError={studio.clearError}
+			/>
+			<TimingDialog
+				project={project}
+				open={timingOpen}
+				busy={studio.busy}
+				error={studio.error}
+				onClose={() => setTimingOpen(false)}
+				onTempoMap={(tempoMap) =>
+					studio.command({ type: "setTempoMap", tempoMap })
+				}
+				onMeterMap={(meterMap) =>
+					studio.command({ type: "setMeterMap", meterMap })
+				}
+				onTempo={(tempo) => studio.command({ type: "setTempo", tempo })}
+				onMeter={(meter) => studio.command({ type: "setMeter", meter })}
 			/>
 		</div>
 	);
