@@ -5,15 +5,23 @@ use std::collections::BTreeSet;
 pub const SUPPORTED: &[&str] = &[
     "audio-regions-v1",
     "core-v1",
+    "meter-map-v1",
     "modifier-ordering-v1",
     "named-slots-v1",
     "note-patches-v1",
     "proposal-review-v1",
     "slot-bindings-v1",
+    "tempo-map-v1",
 ];
 
 pub fn required(project: &Project) -> BTreeSet<&'static str> {
     let mut features = BTreeSet::from(["core-v1"]);
+    if project.tempo_map.is_some() {
+        features.insert("tempo-map-v1");
+    }
+    if project.meter_map.is_some() {
+        features.insert("meter-map-v1");
+    }
     if !project.assets.is_empty() || !project.regions.is_empty() {
         features.insert("audio-regions-v1");
     }

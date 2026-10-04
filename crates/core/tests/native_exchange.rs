@@ -1,5 +1,16 @@
-use daiw_core::{Principal, Project, Request, Response, create_project, dispatch};
+use daiw_core::{
+    Curve, MeterMap, MeterPoint, Principal, Project, Request, Response, TempoMap, TempoPoint, Tick,
+    create_project, dispatch,
+};
 use serde_json::{Value, json};
+use std::fmt::Debug;
+
+fn must<T, E: Debug>(result: Result<T, E>) -> T {
+    match result {
+        Ok(value) => value,
+        Err(error) => panic!("unexpected error: {error:?}"),
+    }
+}
 
 fn call(state: Option<Project>, method: &str, params: Value) -> Response {
     dispatch(Request {
@@ -19,6 +30,10 @@ fn export(project: &Project) -> Value {
         }
         Response::Failure(response) => panic!("export failed: {:?}", response.error),
     }
+}
+
+fn beat(value: f64) -> Tick {
+    must(Tick::from_beats(value))
 }
 
 #[test]
@@ -101,6 +116,60 @@ fn v1_hash_covers_sorted_full_content_including_revision_and_history() {
         Response::Failure(response) => assert_eq!(response.error.code, "CorruptProject"),
         Response::Success(_) => panic!("revision tampering passed integrity check"),
     }
+}
+
+#[test]
+fn timing_maps_round_trip_with_exact_required_features() {
+    let mut project = create_project(None, false);
+    project.tempo = 100.0;
+    project.tempo_map = Some(must(TempoMap::new(vec![
+        TempoPoint::new(beat(0.0), 100.0, Curve::Linear),
+        TempoPoint::new(beat(4.0), 140.0, Curve::Step),
+    ])));
+    project.meter = [3, 4];
+    project.meter_map = Some(must(MeterMap::new(vec![
+        MeterPoint::new(beat(0.0), 3, 4),
+        MeterPoint::new(beat(3.0), 4, 4),
+    ])));
+
+    let document = export(&project);
+    assert_eq!(
+        document["requiredFeatures"],
+        json!(["core-v1", "meter-map-v1", "tempo-map-v1"])
+    );
+    match call(None, "project.import", json!({"project":document})) {
+        Response::Success(response) => {
+            assert_eq!(response.state.tempo_map, project.tempo_map);
+            assert_eq!(response.state.meter_map, project.meter_map);
+        }
+        Response::Failure(response) => panic!("timing map import failed: {:?}", response.error),
+    }
+}
+
+#[test]
+fn timing_map_features_are_required_and_null_maps_remain_noncanonical() {
+    let mut project = create_project(None, false);
+    project.tempo = 120.0;
+    project.tempo_map = Some(must(TempoMap::new(vec![TempoPoint::new(
+        beat(0.0),
+        120.0,
+        Curve::Step,
+    )])));
+    let document = export(&project);
+    let mut missing = document.clone();
+    missing["requiredFeatures"] = json!(["core-v1"]);
+    assert!(matches!(
+        call(None, "project.import", json!({"project":missing})),
+        Response::Failure(_)
+    ));
+
+    let mut raw = must(serde_json::to_value(create_project(None, false)));
+    raw["tempoMap"] = Value::Null;
+    raw["meterMap"] = Value::Null;
+    assert!(matches!(
+        call(None, "project.import", json!({"project":raw})),
+        Response::Failure(_)
+    ));
 }
 
 #[test]
