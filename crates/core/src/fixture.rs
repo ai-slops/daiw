@@ -15,6 +15,8 @@ pub fn create_project(name: Option<&str>, fixture: bool) -> Project {
         revision: Revision::initial(),
         tempo: 112.0,
         meter: [4, 4],
+        tempo_map: None,
+        meter_map: None,
         definitions: Vec::new(),
         instances: Vec::new(),
         tracks: Vec::new(),

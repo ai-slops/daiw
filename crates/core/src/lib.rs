@@ -38,11 +38,16 @@ mod resolver;
 mod revision;
 mod selected_note_edit;
 mod time;
+mod timing_mutation;
 mod track_resolution;
 mod validation;
 
 pub use cli::run as run_cli;
 pub use command::{ChangeRequest, Command, EditScope};
+pub use daiw_timing::{
+    Beat, Curve, MAX_BEATS, MAX_TICKS, MeterMap, MeterPoint, TICKS_PER_BEAT, TempoMap, TempoPoint,
+    Tick, TimingError,
+};
 pub use dispatch::dispatch;
 pub use engine::{apply_change, preview_change};
 pub use error::{BindingMismatch, CoreError, ErrorBody, ModifierBindingIssue, NoteTargetIssue};
@@ -62,5 +67,4 @@ pub use protocol::*;
 pub use resolver::snapshot;
 pub use revision::{canonical_hash, musical_fingerprint};
 pub use selected_note_edit::NoteTransform;
-pub use time::{MAX_BEATS, MAX_TICKS, TICKS_PER_BEAT, Tick};
 pub use validation::validate_project;

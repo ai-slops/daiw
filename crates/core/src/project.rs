@@ -2,6 +2,7 @@ use crate::ids::{AssetId, HistoryId, ProjectId, RegionId, Revision, TrackId};
 use crate::music::{Definition, EffectiveNote, Instance, Modifier, Track};
 use crate::proposal_model::Proposal;
 use crate::time::Tick;
+use daiw_timing::{MeterMap, TempoMap};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -44,6 +45,10 @@ pub struct Project {
     pub revision: Revision,
     pub tempo: f64,
     pub meter: [u8; 2],
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tempo_map: Option<TempoMap>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub meter_map: Option<MeterMap>,
     pub definitions: Vec<Definition>,
     pub instances: Vec<Instance>,
     pub tracks: Vec<Track>,
@@ -61,6 +66,12 @@ pub struct Project {
 pub struct Snapshot {
     pub revision: Revision,
     pub tempo: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tempo_map: Option<TempoMap>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub meter: Option<[u8; 2]>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub meter_map: Option<MeterMap>,
     pub length: Tick,
     pub tracks: Vec<Track>,
     pub notes: Vec<EffectiveNote>,
