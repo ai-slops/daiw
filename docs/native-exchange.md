@@ -12,6 +12,8 @@ Imported audio references must match local asset hash, frames, channels and samp
 
 ## Revision-bound note handles
 
+Timing maps additionally require `tempo-map-v1` and `meter-map-v1` respectively. Their absence leaves existing native hashes unchanged; see [timing.md](timing.md).
+
 `project.queryNotes` is read-only for humans and agents. It resolves one nonrecursive selector in canonical source notes or instance-effective editable first-loop notes. Results sort by onset then stable ID. Required `maxResults` is 1–4096; over-limit queries fail rather than truncate. Supported selectors and transform wire shapes are listed in [api.md](api.md#bounded-note-selection).
 
 The handle includes project ID/base revision, definition ID/revision, instance ID, edit scope, selector, ordered note IDs, cardinality and resolution fingerprint. Apply checks these values and resolves the selector again. The fingerprint is an unkeyed consistency check, **not a capability or authorization token**. Any canonical project revision change conservatively invalidates the handle. No adaptive rebasing occurs.
