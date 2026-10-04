@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { validateMeterMap, validateTempoMap } from "../../shared/timing.mjs";
 
 const IdSchema = z.string().min(1).brand<"EntityId">();
 const RevisionSchema = z.string().min(1).brand<"Revision">();
@@ -7,7 +8,7 @@ export const NoteSchema = z.object({
   id: IdSchema,
   start: z.number().nonnegative(),
   duration: z.number().positive(),
-  pitch: z.number().min(0).max(127),
+  pitch: z.number(),
   velocity: z.number().min(0).max(1),
 });
 
@@ -144,12 +145,48 @@ export const AudioRegionSchema = z.object({
   sourceOffset: z.number().nonnegative(),
 });
 
+export const TempoSchema = z.number().min(20).max(400);
+export const MeterSchema = z.tuple([
+  z.number().int().min(1).max(255),
+  z.number().int().min(1).max(255),
+]);
+export const TempoMapSchema = z.object({
+  points: z.array(z.object({
+    at: z.number().nonnegative(),
+    bpm: TempoSchema,
+    curve: z.enum(["step", "linear"]),
+  })).min(1).max(1024),
+}).superRefine((map, context) => {
+  try {
+    validateTempoMap(map);
+  } catch (error) {
+    if (!(error instanceof RangeError)) throw error;
+    context.addIssue({ code: "custom", message: error.message });
+  }
+});
+export const MeterMapSchema = z.object({
+  points: z.array(z.object({
+    at: z.number().nonnegative(),
+    numerator: z.number().int().min(1).max(255),
+    denominator: z.number().int().min(1).max(255),
+  })).min(1).max(1024),
+}).superRefine((map, context) => {
+  try {
+    validateMeterMap(map);
+  } catch (error) {
+    if (!(error instanceof RangeError)) throw error;
+    context.addIssue({ code: "custom", message: error.message });
+  }
+});
+
 export const ProjectSchema = z.object({
   id: IdSchema,
   name: z.string().min(1),
   revision: RevisionSchema,
-  tempo: z.number().positive(),
-  meter: z.tuple([z.literal(4), z.literal(4)]),
+  tempo: TempoSchema,
+  meter: MeterSchema,
+  tempoMap: TempoMapSchema.optional(),
+  meterMap: MeterMapSchema.optional(),
   definitions: z.array(DefinitionSchema),
   instances: z.array(InstanceSchema),
   tracks: z.array(TrackSchema),
@@ -158,6 +195,14 @@ export const ProjectSchema = z.object({
   history: z.array(z.object({ id: IdSchema, message: z.string(), author: z.string(), revision: RevisionSchema })),
   regions: z.array(AudioRegionSchema).default([]),
   assets: z.array(AssetSchema).default([]),
+}).superRefine((project, context) => {
+  if (project.tempoMap !== undefined && project.tempoMap.points[0]?.bpm !== project.tempo) {
+    context.addIssue({ code: "custom", path: ["tempoMap"], message: "tempo must equal the first tempo-map point" });
+  }
+  const firstMeter = project.meterMap?.points[0];
+  if (firstMeter !== undefined && (firstMeter.numerator !== project.meter[0] || firstMeter.denominator !== project.meter[1])) {
+    context.addIssue({ code: "custom", path: ["meterMap"], message: "meter must equal the first meter-map point" });
+  }
 });
 
 export const DiagnosticSchema = z.object({
