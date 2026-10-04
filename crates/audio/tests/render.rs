@@ -47,6 +47,7 @@ fn renderer_is_deterministic_and_non_silent_when_snapshot_has_note() {
     let snapshot = Snapshot {
         revision: "r1".into(),
         tempo: 120.0,
+        tempo_map: None,
         length: 2.0,
         tracks: vec![track("synth", Instrument::Synth)],
         notes: vec![note("synth")],
@@ -78,6 +79,7 @@ fn renderer_places_sample_region_at_exact_frame_with_source_offset() {
     let snapshot = Snapshot {
         revision: "r1".into(),
         tempo: 60.0,
+        tempo_map: None,
         length: 3.0,
         tracks: vec![track("sample", Instrument::Sample)],
         notes: Vec::new(),
@@ -111,6 +113,7 @@ fn zero_db_stereo_region_preserves_channel_difference() {
     let snapshot = Snapshot {
         revision: "r1".into(),
         tempo: 60.0,
+        tempo_map: None,
         length: 1.0,
         tracks: vec![track("sample", Instrument::Sample)],
         notes: Vec::new(),
@@ -151,6 +154,7 @@ fn missing_region_asset_is_an_explicit_error() {
     let snapshot = Snapshot {
         revision: "r1".into(),
         tempo: 120.0,
+        tempo_map: None,
         length: 1.0,
         tracks: vec![track("sample", Instrument::Sample)],
         notes: Vec::new(),
@@ -178,6 +182,7 @@ fn note_with_unknown_track_is_an_explicit_error() {
     let snapshot = Snapshot {
         revision: "r1".into(),
         tempo: 120.0,
+        tempo_map: None,
         length: 1.0,
         tracks: vec![track("synth", Instrument::Synth)],
         notes: vec![note("missing")],

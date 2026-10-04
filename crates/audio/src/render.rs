@@ -80,7 +80,7 @@ fn render_note(
     if start >= clock.total_frames {
         return Ok(());
     }
-    let frames = clock.frame_at(note.duration)?;
+    let frames = clock.frames_for(note.start, note.duration)?;
     let actual_frames = frames.min(clock.total_frames - start);
     if actual_frames == 0 {
         return Ok(());
@@ -157,7 +157,7 @@ fn render_region(
         return Ok(());
     }
     let duration = clock
-        .frame_at(region.duration)?
+        .frames_for(region.start, region.duration)?
         .min(clock.total_frames - start);
     if duration == 0 {
         return Ok(());

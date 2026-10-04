@@ -7,6 +7,8 @@ use serde::{Deserialize, Serialize};
 pub struct Snapshot {
     pub revision: String,
     pub tempo: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tempo_map: Option<daiw_timing::TempoMap>,
     pub length: f64,
     pub tracks: Vec<Track>,
     pub notes: Vec<EffectiveNote>,

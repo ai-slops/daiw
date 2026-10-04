@@ -1,10 +1,12 @@
 use crate::{AudioError, Snapshot};
+use daiw_timing::{TempoMap, Tick};
 
 pub const MAX_RENDER_FRAMES: usize = 8_640_000;
 
 pub(crate) struct RenderClock {
     pub sample_rate: u32,
     pub tempo: f64,
+    tempo_map: Option<TempoMap>,
     pub total_frames: usize,
 }
 
@@ -13,6 +15,7 @@ impl RenderClock {
         let mut clock = Self {
             sample_rate,
             tempo: snapshot.tempo,
+            tempo_map: snapshot.tempo_map.clone(),
             total_frames: 0,
         };
         clock.total_frames = clock.frame_at(snapshot.length)?;
@@ -25,9 +28,36 @@ impl RenderClock {
     }
 
     pub fn frame_at(&self, beat: f64) -> Result<usize, AudioError> {
-        checked_frame_index(
-            (beat.max(0.0) * 60.0 / self.tempo * f64::from(self.sample_rate)).round(),
-        )
+        let seconds = match &self.tempo_map {
+            Some(map) => map
+                .seconds_at(
+                    Tick::from_beats(beat.max(0.0)).map_err(|_| AudioError::InvalidFrameCount)?,
+                )
+                .map_err(|_| AudioError::InvalidFrameCount)?,
+            None => beat.max(0.0) * 60.0 / self.tempo,
+        };
+        checked_frame_index((seconds * f64::from(self.sample_rate)).round())
+    }
+
+    pub fn frames_for(&self, start: f64, duration: f64) -> Result<usize, AudioError> {
+        let Some(map) = &self.tempo_map else {
+            return self.frame_at(duration);
+        };
+        let start_tick = Tick::from_beats(start).map_err(|_| AudioError::InvalidFrameCount)?;
+        let duration_tick =
+            Tick::from_beats(duration).map_err(|_| AudioError::InvalidFrameCount)?;
+        let start_seconds = map
+            .seconds_at(start_tick)
+            .map_err(|_| AudioError::InvalidFrameCount)?;
+        let end_seconds = map
+            .seconds_at(start_tick + duration_tick)
+            .map_err(|_| AudioError::InvalidFrameCount)?;
+        let start_frame =
+            checked_frame_index((start_seconds * f64::from(self.sample_rate)).round())?;
+        let end_frame = checked_frame_index((end_seconds * f64::from(self.sample_rate)).round())?;
+        end_frame
+            .checked_sub(start_frame)
+            .ok_or(AudioError::InvalidFrameCount)
     }
 }
 
@@ -56,6 +86,7 @@ mod tests {
         let mut snapshot = Snapshot {
             revision: "limit".into(),
             tempo: 60.0,
+            tempo_map: None,
             length: 180.0,
             tracks: vec![],
             notes: vec![],

@@ -10,6 +10,7 @@ fn request() -> RenderRequest {
     RenderRequest::new(Snapshot {
         revision: "note-validation".into(),
         tempo: 120.0,
+        tempo_map: None,
         length: 1.0,
         tracks: vec![Track {
             id: "synth".into(),

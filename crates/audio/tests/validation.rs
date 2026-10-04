@@ -12,6 +12,7 @@ fn request(region: AudioRegion) -> RenderRequest {
     let snapshot = Snapshot {
         revision: "r1".into(),
         tempo: 120.0,
+        tempo_map: None,
         length: 2.0,
         tracks: vec![Track {
             id: "sample".into(),
