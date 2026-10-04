@@ -1,6 +1,6 @@
 import { loudnessMatchGain, updateMeter } from "./analysis";
 import { fetchServerRender, snapshotRevisionMatches } from "./server-render";
-import { beatAtTime, normalizeLoopBeat, secondsAtBeat, validateLoop } from "./transport";
+import { beatAtSeconds, normalizeLoopBeat, secondsAtBeat, validateLoop } from "./transport";
 import { snapshotSchema } from "./types";
 import type {
   AudioEngineState,
@@ -104,7 +104,8 @@ export class DaiwAudioEngine {
 
   public seek(beat: number): void {
     const snapshot = this.#requireSnapshot();
-    this.#positionBeat = Math.max(0, Math.min(beat, snapshot.length));
+    const clamped = Math.max(0, Math.min(beat, snapshot.length));
+    this.#positionBeat = normalizeLoopBeat(clamped, this.#loop);
     if (this.#status === "playing") {
       this.#clearSource();
       this.#startedAt = this.#context.currentTime;
@@ -143,8 +144,15 @@ export class DaiwAudioEngine {
     const snapshot = this.#snapshot;
     if (snapshot === null || this.#status !== "playing") return this.#positionBeat;
     const elapsed = this.#context.currentTime - this.#startedAt;
-    const position = this.#positionBeat + beatAtTime(elapsed, snapshot.tempo);
-    return Math.min(snapshot.length, normalizeLoopBeat(position, this.#loop));
+    const timing = snapshot.tempoMap ?? snapshot.tempo;
+    const absoluteSeconds = secondsAtBeat(this.#positionBeat, timing) + elapsed;
+    if (this.#loop === null) return Math.min(snapshot.length, beatAtSeconds(absoluteSeconds, timing));
+    const loopStart = secondsAtBeat(this.#loop.start, timing);
+    const loopEnd = secondsAtBeat(this.#loop.end, timing);
+    const positionSeconds = absoluteSeconds < loopEnd
+      ? absoluteSeconds
+      : loopStart + ((absoluteSeconds - loopStart) % (loopEnd - loopStart));
+    return beatAtSeconds(positionSeconds, timing);
   }
 
   public getState(): AudioEngineState {
@@ -178,16 +186,18 @@ export class DaiwAudioEngine {
     const buffer = this.#requireBuffer();
     const source = this.#context.createBufferSource();
     const gain = this.#context.createGain();
+    const timing = snapshot.tempoMap ?? snapshot.tempo;
+    this.#positionBeat = normalizeLoopBeat(this.#positionBeat, this.#loop);
     source.buffer = buffer;
     if (this.#loop !== null) {
       source.loop = true;
-      source.loopStart = secondsAtBeat(this.#loop.start, snapshot.tempo);
-      source.loopEnd = secondsAtBeat(this.#loop.end, snapshot.tempo);
+      source.loopStart = secondsAtBeat(this.#loop.start, timing);
+      source.loopEnd = secondsAtBeat(this.#loop.end, timing);
     }
     gain.gain.value = this.#selectedGain(buffer);
     source.connect(gain).connect(this.#analyser);
     source.onended = () => this.#handleEnded(source, snapshot.length);
-    source.start(0, secondsAtBeat(this.#positionBeat, snapshot.tempo));
+    source.start(0, secondsAtBeat(this.#positionBeat, timing));
     this.#source = source;
     this.#gain = gain;
   }
