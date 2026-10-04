@@ -85,6 +85,9 @@ pub fn snapshot(
     Ok(Snapshot {
         revision: project.revision.clone(),
         tempo: project.tempo,
+        tempo_map: project.tempo_map.clone(),
+        meter: Some(project.meter),
+        meter_map: project.meter_map.clone(),
         length: instance_end.max(region_end),
         tracks,
         notes,

@@ -21,6 +21,24 @@ pub fn validate_project(project: &Project) -> Result<(), CoreError> {
             "meter values must be positive".to_owned(),
         ));
     }
+    if project
+        .tempo_map
+        .as_ref()
+        .and_then(|map| map.points().first())
+        .is_some_and(|point| point.bpm != project.tempo)
+    {
+        return Err(CoreError::InvalidProject(
+            "tempo must equal the first tempo map point".to_owned(),
+        ));
+    }
+    if project.meter_map.as_ref().is_some_and(|map| {
+        let first = map.points()[0];
+        [first.numerator, first.denominator] != project.meter
+    }) {
+        return Err(CoreError::InvalidProject(
+            "meter must equal the first meter map point".to_owned(),
+        ));
+    }
     let definition_ids = unique_ids(
         project.definitions.iter().map(|item| &item.id),
         "definition",
