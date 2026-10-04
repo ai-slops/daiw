@@ -6,6 +6,7 @@ import type {
 	Snapshot,
 } from "../audio";
 import { DaiwAudioEngine } from "../audio";
+import { fourBarRange } from "../components/transport-timing";
 import { SnapshotResultSchema } from "../domain/api";
 import type { Project } from "../domain/project";
 import { rpc } from "../lib/api-client";
@@ -150,12 +151,20 @@ export const useAudio = (project: Project) => {
 			engine.setLoop(null);
 			return;
 		}
-		const start = Math.min(
-			Math.floor(state.positionBeat / 16) * 16,
-			Math.max(0, snapshot.length - 0.25),
+		engine.setLoop(
+			fourBarRange(
+				state.positionBeat,
+				snapshot.length,
+				project.meterMap ?? project.meter,
+			),
 		);
-		engine.setLoop({ start, end: Math.min(start + 16, snapshot.length) });
-	}, [ensureEngine, state.loop, state.positionBeat]);
+	}, [
+		ensureEngine,
+		project.meter,
+		project.meterMap,
+		state.loop,
+		state.positionBeat,
+	]);
 	const seek = useCallback(
 		(beat: number) => {
 			try {
