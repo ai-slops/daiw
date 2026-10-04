@@ -2,6 +2,7 @@ use crate::ids::{DefinitionId, InstanceId, ModifierId, RegionId, Revision, Track
 use crate::music::{Instrument, Note, Operation};
 use crate::project::{Asset, AudioRegion};
 use crate::time::Tick;
+use daiw_timing::{MeterMap, TempoMap};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -20,6 +21,15 @@ pub enum EditScope {
 pub enum Command {
     SetTempo {
         tempo: f64,
+    },
+    SetTempoMap {
+        tempo_map: TempoMap,
+    },
+    SetMeter {
+        meter: [u8; 2],
+    },
+    SetMeterMap {
+        meter_map: MeterMap,
     },
     RenameProject {
         name: String,

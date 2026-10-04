@@ -85,7 +85,14 @@ pub fn affected_instances(project: &Project, command: &Command) -> Vec<InstanceI
         | Command::SetModifierOrdering { instance_id, .. }
         | Command::RemoveModifier { instance_id, .. } => vec![instance_id.clone()],
         Command::SetTempo { .. }
-        | Command::RenameProject { .. }
+        | Command::SetTempoMap { .. }
+        | Command::SetMeter { .. }
+        | Command::SetMeterMap { .. } => project
+            .instances
+            .iter()
+            .map(|instance| instance.id.clone())
+            .collect(),
+        Command::RenameProject { .. }
         | Command::AddTrack { .. }
         | Command::SetTrack { .. }
         | Command::AddDefinition { .. }

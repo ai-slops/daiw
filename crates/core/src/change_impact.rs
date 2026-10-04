@@ -70,6 +70,9 @@ pub fn analyze(
         let track = &instance.track_id;
         if old.get(id) != new.get(id)
             || before.tempo != after.tempo
+            || before.tempo_map != after.tempo_map
+            || before.meter != after.meter
+            || before.meter_map != after.meter_map
             || old_solo != new_solo
             || before
                 .definitions

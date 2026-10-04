@@ -8,9 +8,13 @@ use crate::validation::{validate_notes, validate_operations};
 
 pub fn apply_command(project: &mut Project, command: Command) -> Result<String, CoreError> {
     match command {
-        Command::SetTempo { tempo } => {
-            project.tempo = tempo;
-            Ok("Set tempo".to_owned())
+        Command::SetTempo { tempo } => crate::timing_mutation::set_tempo(project, tempo),
+        Command::SetTempoMap { tempo_map } => {
+            crate::timing_mutation::set_tempo_map(project, tempo_map)
+        }
+        Command::SetMeter { meter } => crate::timing_mutation::set_meter(project, meter),
+        Command::SetMeterMap { meter_map } => {
+            crate::timing_mutation::set_meter_map(project, meter_map)
         }
         Command::RenameProject { name } => {
             project.name = name;
