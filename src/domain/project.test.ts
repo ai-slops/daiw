@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ProjectSchema, RpcResponseSchema } from "./project";
+import { HunkSchema, ModifierSchema, OperationSchema, ProjectSchema, RpcResponseSchema } from "./project";
 
 const blankProject = {
   id: "project-1",
@@ -16,6 +16,20 @@ const blankProject = {
 };
 
 describe("ProjectSchema", () => {
+  it("preserves identity-based note patches returned by Rust", () => {
+    const patch = { type: "patchNotes", updates: [{ id: "n1", start: 0, duration: 1, pitch: 61, velocity: 0.8 }], added: [], removed: ["n2"] };
+    const parsed = OperationSchema.parse(patch);
+    expect(parsed).toEqual(patch);
+  });
+
+  it("rejects internal note patches in reusable modifiers and proposal hunks", () => {
+    const patch = { type: "patchNotes", updates: [], added: [], removed: [] };
+    const modifier = ModifierSchema.safeParse({ id: "m1", name: "Local only", operations: [patch] });
+    const hunk = HunkSchema.safeParse({ id: "h1", title: "Local only", description: "", operation: patch, dependencies: [], accepted: false });
+    expect(modifier.success).toBe(false);
+    expect(hunk.success).toBe(false);
+  });
+
   it("parses a canonical blank project when the API returns the contract shape", () => {
     // Given a project-shaped API payload
     // When the payload crosses the Zod boundary

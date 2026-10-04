@@ -15,6 +15,12 @@ const TransposeSchema = z.object({ type: z.literal("transpose"), semitones: z.nu
 const VelocitySchema = z.object({ type: z.literal("velocity"), factor: z.number().positive() });
 const GainSchema = z.object({ type: z.literal("gain"), db: z.number() });
 const AddNotesSchema = z.object({ type: z.literal("addNotes"), notes: z.array(NoteSchema) });
+const PatchNotesSchema = z.object({
+  type: z.literal("patchNotes"),
+  updates: z.array(NoteSchema),
+  added: z.array(NoteSchema),
+  removed: z.array(IdSchema),
+});
 const ReplaceSlotSchema = z.object({
   type: z.literal("replaceSlot"),
   slot: z.string().min(1),
@@ -26,13 +32,18 @@ const SetParameterSchema = z.object({
   value: z.number(),
 });
 
-export const OperationSchema = z.discriminatedUnion("type", [
+export const ReusableOperationSchema = z.discriminatedUnion("type", [
   TransposeSchema,
   VelocitySchema,
   GainSchema,
   AddNotesSchema,
   ReplaceSlotSchema,
   SetParameterSchema,
+]);
+
+export const OperationSchema = z.discriminatedUnion("type", [
+  ...ReusableOperationSchema.options,
+  PatchNotesSchema,
 ]);
 
 export const TrackSchema = z.object({
@@ -48,12 +59,32 @@ export const TrackSchema = z.object({
   cutoff: z.number().positive(),
 });
 
+const NoteSlotSchema = z.object({
+  start: z.number().nonnegative(),
+  end: z.number().positive(),
+});
+
+const ModifierBindingSchema = z.object({
+  definitionId: IdSchema,
+  definitionRevision: z.number().int().nonnegative(),
+  slots: z.record(z.string().min(1), z.object({
+    range: NoteSlotSchema,
+    noteIds: z.array(IdSchema),
+    cardinality: z.number().int().nonnegative(),
+  })),
+});
+
 export const DefinitionSchema = z.object({
   id: IdSchema,
   name: z.string().min(1),
   length: z.number().positive(),
   notes: z.array(NoteSchema),
   revision: z.number().int().nonnegative(),
+  slots: z.record(z.string().min(1), NoteSlotSchema).optional(),
+});
+
+export const ModifierOrderingSchema = z.object({
+  edges: z.array(z.object({ before: IdSchema, after: IdSchema })),
 });
 
 export const InstanceSchema = z.object({
@@ -65,19 +96,21 @@ export const InstanceSchema = z.object({
   length: z.number().positive(),
   modifiers: z.array(IdSchema),
   overrides: z.array(OperationSchema),
+  modifierBindings: z.record(IdSchema, ModifierBindingSchema).optional(),
+  modifierOrdering: ModifierOrderingSchema.optional(),
 });
 
 export const ModifierSchema = z.object({
   id: IdSchema,
   name: z.string().min(1),
-  operations: z.array(OperationSchema),
+  operations: z.array(ReusableOperationSchema),
 });
 
 export const HunkSchema = z.object({
   id: IdSchema,
   title: z.string(),
   description: z.string(),
-  operation: OperationSchema,
+  operation: ReusableOperationSchema,
   dependencies: z.array(IdSchema),
   accepted: z.boolean(),
 });
@@ -153,5 +186,5 @@ export type Definition = z.infer<typeof DefinitionSchema>;
 export type Modifier = z.infer<typeof ModifierSchema>;
 export type Proposal = z.infer<typeof ProposalSchema>;
 export type Note = z.infer<typeof NoteSchema>;
-export type Operation = z.infer<typeof OperationSchema>;
+export type Operation = z.infer<typeof ReusableOperationSchema>;
 export type EntityId = z.infer<typeof IdSchema>;

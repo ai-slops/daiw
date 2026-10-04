@@ -4,6 +4,7 @@ import {
 	DiagnosticSchema,
 	InstanceSchema,
 	ModifierSchema,
+	ModifierOrderingSchema,
 	NoteSchema,
 	OperationSchema,
 	ProjectSchema,
@@ -25,6 +26,23 @@ export const ProjectListSchema = z.object({
 	projects: z.array(ProjectSummarySchema),
 });
 
+const AccessResourceSchema = z.discriminatedUnion("kind", [
+	z.object({ kind: z.enum(["noteMembership", "noteTiming", "notePitch", "noteVelocity", "trackGain"]) }),
+	z.object({ kind: z.literal("parameter"), parameter: z.enum(["cutoff", "pan"]) }),
+	z.object({ kind: z.literal("slot"), slot: z.string().min(1) }),
+]);
+
+const ModifierPlanSchema = z.object({
+	mode: z.enum(["legacy", "explicit"]),
+	order: z.array(z.string().min(1)),
+	edges: ModifierOrderingSchema.shape.edges.optional(),
+	modifiers: z.array(z.object({
+		modifierId: z.string().min(1),
+		reads: z.array(AccessResourceSchema),
+		writes: z.array(AccessResourceSchema),
+	})),
+});
+
 export const ExplainResultSchema = z.object({
 	revision: z.string(),
 	effectiveNotes: z.array(NoteSchema),
@@ -32,6 +50,47 @@ export const ExplainResultSchema = z.object({
 	definition: DefinitionSchema,
 	modifiers: z.array(ModifierSchema),
 	overrides: z.array(OperationSchema),
+	unboundModifierIds: z.array(z.string().min(1)).optional(),
+	modifierPlan: ModifierPlanSchema.optional(),
+});
+
+const InstanceCheckSchema = z.discriminatedUnion("status", [
+	z.object({ status: z.literal("absent") }),
+	z.object({
+		status: z.literal("clean"),
+		definitionId: z.string().min(1),
+		definitionRevision: z.number().int().nonnegative(),
+		noteCount: z.number().int().nonnegative(),
+		unboundModifierIds: z.array(z.string().min(1)).optional(),
+	}),
+	z.object({
+		status: z.literal("conflict"),
+		definitionId: z.string().min(1),
+		definitionRevision: z.number().int().nonnegative().nullable(),
+		diagnostic: DiagnosticSchema,
+		unboundModifierIds: z.array(z.string().min(1)).optional(),
+		binding: z.object({
+			modifierId: z.string().min(1),
+			reason: z.enum([
+				"definitionChanged", "sourceRevisionChanged", "selectorsChanged",
+				"slotMissing", "rangeChanged", "cardinalityChanged", "targetsChanged",
+			]),
+			slot: z.string().min(1).optional(),
+		}).optional(),
+		target: z.object({
+			kind: z.enum(["missing", "ambiguous", "addedIdCollision"]),
+			noteId: z.string().min(1),
+		}).optional(),
+		actions: z.array(z.enum([
+			"reviseCommand", "restoreMissingNote", "editInstanceNotes",
+			"chooseUniqueNoteIds", "reviewModifiers", "rebaseModifier",
+		])),
+	}),
+]);
+
+const BeatRangeSchema = z.object({
+	start: z.number().nonnegative(),
+	end: z.number().nonnegative(),
 });
 
 export const DryRunResultSchema = z.object({
@@ -39,6 +98,24 @@ export const DryRunResultSchema = z.object({
 	affectedInstances: z.array(z.string()),
 	hunks: z.array(z.record(z.string(), z.unknown())),
 	diagnostics: z.array(DiagnosticSchema),
+	impact: z.object({
+		baseRevision: z.string().min(1),
+		affectedDefinitions: z.array(z.string().min(1)),
+		affectedTracks: z.array(z.string().min(1)),
+		previewRanges: z.array(z.object({
+			instanceId: z.string().min(1),
+			before: BeatRangeSchema.nullable(),
+			after: BeatRangeSchema.nullable(),
+		})),
+	}).optional(),
+	noteResolution: z.object({
+		ready: z.boolean(),
+		instances: z.array(z.object({
+			instanceId: z.string().min(1),
+			before: InstanceCheckSchema,
+			after: InstanceCheckSchema,
+		})),
+	}).optional(),
 });
 
 export const SnapshotSchema = z.object({
