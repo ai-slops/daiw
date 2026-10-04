@@ -202,7 +202,7 @@ const LoadedStudio = ({ studio, project }: LoadedStudioProps) => {
 				{workspace === "inspector" ? inspectorPanel : null}
 			</main>
 			<aside className="inspector-slot">{inspectorPanel}</aside>
-			{studio.error === undefined ? null : (
+			{studio.error === undefined || projectsOpen ? null : (
 				<div className="error-toast" role="alert">
 					<AlertTriangle aria-hidden="true" />
 					<span>{studio.error}</span>
@@ -227,9 +227,13 @@ const LoadedStudio = ({ studio, project }: LoadedStudioProps) => {
 				onOpen={(id) => void studio.openProject(id)}
 				onCreate={(name, fixture) => void studio.createProject(name, fixture)}
 				onExport={exportProject}
+				onImport={studio.importProjectDocument}
 				onRename={(name) =>
 					void studio.command({ type: "renameProject", name })
 				}
+				busy={studio.busy}
+				error={studio.error}
+				onClearError={studio.clearError}
 			/>
 		</div>
 	);

@@ -4,6 +4,7 @@ import type { ProjectSummary } from "../domain/api";
 import {
 	HealthSchema,
 	ProjectListSchema,
+	ProjectResultSchema,
 	SessionSchema,
 	WaveformSchema,
 } from "../domain/api";
@@ -126,6 +127,11 @@ export const downloadProject = (projectId: string): void => {
 	window.location.assign(
 		`/api/projects/${encodeURIComponent(projectId)}/export`,
 	);
+};
+
+export const importProject = async (document: unknown): Promise<Project> => {
+  const response = await rpc({ method: "project.import", params: { project: document }, mutation: true }, ProjectResultSchema);
+  return response.state;
 };
 
 export const renderUrl = (projectId: string, proposalId?: string): string => {

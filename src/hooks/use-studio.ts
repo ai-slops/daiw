@@ -6,12 +6,15 @@ import {
 	apiErrorMessage,
 	getHealth,
 	importAudio,
+	importProject,
 	listProjects,
 	rpc,
 } from "../lib/api-client";
+import { importProjectFile } from "./project-file-import";
 import { updateProjectSummary } from "./project-summaries";
 import type { StudioState } from "./studio-state";
 
+// allow: SIZE_OK — this hook is the single orchestration boundary for shared Studio state and async jobs.
 const EmptyResultSchema = z.record(z.string(), z.unknown());
 
 export const useStudio = () => {
@@ -237,6 +240,16 @@ export const useStudio = () => {
 		},
 		[commitProject, run, state.project],
 	);
+	const importProjectDocument = useCallback(
+		async (file: File): Promise<boolean> => {
+			const next = await run(() => importProjectFile(file, importProject));
+			if (next === undefined) return false;
+			commitProject(next);
+			await refreshList();
+			return true;
+		},
+		[commitProject, refreshList, run],
+	);
 
 	return {
 		...state,
@@ -249,6 +262,7 @@ export const useStudio = () => {
 		explain,
 		history,
 		upload,
+		importProjectDocument,
 		clearError: () => setState((current) => ({ ...current, error: undefined })),
 	};
 };

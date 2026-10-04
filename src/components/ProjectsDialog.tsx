@@ -12,6 +12,7 @@ import type { ProjectSummary } from "../domain/api";
 import type { Project } from "../domain/project";
 import { DiagnosticSchema } from "../domain/project";
 import { apiErrorMessage, rpc } from "../lib/api-client";
+import { ProjectImportControls } from "./ProjectImportControls";
 import { Button, IconButton } from "./primitives";
 
 const ValidationSchema = z.object({
@@ -27,7 +28,11 @@ type ProjectsDialogProps = {
 	readonly onOpen: (id: string) => void;
 	readonly onCreate: (name: string, fixture: boolean) => void;
 	readonly onExport: () => void;
+	readonly onImport: (file: File) => Promise<boolean>;
 	readonly onRename: (name: string) => void;
+	readonly busy: boolean;
+	readonly error: string | undefined;
+	readonly onClearError: () => void;
 };
 
 export const ProjectsDialog = ({
@@ -38,7 +43,11 @@ export const ProjectsDialog = ({
 	onOpen,
 	onCreate,
 	onExport,
+	onImport,
 	onRename,
+	busy,
+	error,
+	onClearError,
 }: ProjectsDialogProps) => {
 	const dialogRef = useRef<HTMLDialogElement>(null);
 	const [name, setName] = useState("");
@@ -208,9 +217,18 @@ export const ProjectsDialog = ({
 					</section>
 				</div>
 				<footer>
-					<Button icon={Download} onClick={onExport}>
-						Export canonical JSON
-					</Button>
+					<div className="cluster">
+						<ProjectImportControls
+							busy={busy}
+							onClearError={onClearError}
+							onImport={onImport}
+							onImported={onClose}
+						/>
+						<Button icon={Download} onClick={onExport} disabled={busy}>
+							Export canonical JSON
+						</Button>
+					</div>
+					{error === undefined ? null : <span role="alert">{error}</span>}
 					<Button variant="primary" onClick={onClose}>
 						Done
 					</Button>
