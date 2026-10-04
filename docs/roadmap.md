@@ -6,6 +6,8 @@ Completed: identity-based instance note patches, scoped dry-run note-target/impa
 
 ## Stage 0: Headless domain foundation
 
+Timing follow-up completed: validated step/linear tempo maps, independent meter maps, forward/inverse conversion, mapped render/seek/loop and a usable point editor. Next structural work is nested composition and broader selector/application policies; incremental compilation and streaming follow. See [timing.md](timing.md) for implemented scope and exclusions.
+
 Follow-up completed: versioned native exchange/required-feature rejection, UI file import, and a bounded nonrecursive SelectionHandle subset with source/local transpose and velocity transforms. Next work is broader selector/application policies, tempo/meter maps and nested composition, followed by incremental compilation/streaming. Storage hardening still includes decoded-cache authentication, portable media archives and explicit migrations. See [the current exchange contract](native-exchange.md); do not downgrade by stripping the envelope or feature metadata.
 
 The baseline is a deterministic shared-chorus fixture, typed commands, source versus local edits, explicit modifier conflict handling, provenance, dry-run, proposals, revision checks, and a headless CLI. Regression scenarios must cover propagation, conflicting slot replacement, target drift, stable save/load results, and partial approval dependencies.

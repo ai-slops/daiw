@@ -4,6 +4,8 @@ Audit date: **2026-09-22**. Target: the supplied 2026-09-01 v0.1 implementation 
 
 ## Outcome
 
+**2026-10-04 follow-up:** step/linear tempo maps and independent meter maps now span core commands, native persistence, render timing, host duration limits, browser seek/loop, point-table editing and meter-aware transport/ruler. See [timing.md](timing.md). Validation: **176 Rust / 49 host / 57 client tests**, mapped export/import/restart/render and browser save/cancel/error checks. Remaining work includes nested composition, broader selector/application policies, incremental compilation/streaming and device qualification; this does not close the complete original roadmap.
+
 **2026-10-03 follow-up:** versioned native JSON exchange with required-feature/integrity checks, legacy import, Projects file import UI, and bounded revision-bound note selection/transforms are implemented and verified. Latest counts: **159 Rust / 41 host / 39 client tests**. Real HTTP restart/render and responsive browser import evidence is recorded in [verification.md](verification.md). Contracts and remaining limits are in [native-exchange.md](native-exchange.md). The historical requirement map below predates this follow-up: full native archives/migrations and general selector/application policies remain open, but the native exchange envelope and initial SelectionHandle subset are no longer wholly absent.
 
 **Stage 0 is partially implemented; stage 1 has an executable vertical slice but has not passed its full exit gate. Stages 2–4 remain deferred.** A functioning editor/demo is not proof that the original composition graph, persistence format, real-time compiler, or full query/review contract exists.
