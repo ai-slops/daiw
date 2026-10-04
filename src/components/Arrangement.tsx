@@ -3,7 +3,12 @@ import type { CSSProperties } from "react";
 import { useEffect, useMemo, useState } from "react";
 import type { Project } from "../domain/project";
 import { getWaveform } from "../lib/api-client";
-import { timelineBeats, timelinePercent } from "./arrangement-layout";
+import {
+	projectMeterTiming,
+	timelineBars,
+	timelineBeats,
+	timelinePercent,
+} from "./arrangement-layout";
 import { EmptyState, IconButton } from "./primitives";
 
 type ArrangementProps = {
@@ -24,9 +29,10 @@ export const Arrangement = ({
 	onDelete,
 }: ArrangementProps) => {
 	const beatsVisible = timelineBeats(project);
+	const meterTiming = projectMeterTiming(project);
 	const ruler = useMemo(
-		() => Array.from({ length: beatsVisible / 4 + 1 }, (_, index) => index * 4),
-		[beatsVisible],
+		() => timelineBars(beatsVisible, meterTiming),
+		[beatsVisible, meterTiming],
 	);
 	const [waveforms, setWaveforms] = useState<
 		Readonly<Record<string, readonly number[]>>
@@ -72,17 +78,27 @@ export const Arrangement = ({
 			<div className="timeline-ruler" aria-hidden="true">
 				<span className="timeline-ruler__corner">TRACK / TIME</span>
 				<div className="timeline-ruler__beats">
-					{ruler.map((beat) => (
+					{ruler.map((beat, index) => (
 						<span
 							key={beat}
 							style={{ insetInlineStart: timelinePercent(beat, beatsVisible) }}
 						>
-							{beat / 4 + 1}
+							{index + 1}
 						</span>
 					))}
 				</div>
 			</div>
 			<div className="track-field">
+				<div className="arrangement-grid" aria-hidden="true">
+					{ruler.slice(1, -1).map((beat) => (
+						<span
+							key={beat}
+							style={{
+								insetInlineStart: `calc(var(--track-head-width) + (100% - var(--track-head-width)) * ${beat / beatsVisible})`,
+							}}
+						/>
+					))}
+				</div>
 				<span
 					className="arrangement-playhead"
 					style={{
