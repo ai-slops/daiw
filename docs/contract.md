@@ -6,6 +6,8 @@ Native interchange uses a separate versioned envelope, not worker `state`. See [
 
 ## Domain wire types
 
+Optional `Project.tempoMap` and `Project.meterMap`, their setters, native feature requirements and snapshot behavior are specified in [the timing contract](timing.md). Omitted maps preserve constant timing; they are not silently inferred from scalar fields.
+
 `Project`: `{ id, name, revision, tempo, meter:[4,4], definitions:Definition[], instances:Instance[], tracks:Track[], modifiers:Modifier[], proposals:Proposal[], history:HistoryEntry[] }`.
 
 `Note`: `{ id, start, duration, pitch, velocity }`. Velocity is normalized `0..1`, not MIDI `0..127`. Beat values on the wire are numbers quantized to 1/960 beat by the boundary; Rust stores/validates exact ticks internally or rejects off-grid values. Pitch may be fractional cents expressed in semitones.
