@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { MeterMapSchema, MeterSchema, TempoMapSchema, TempoSchema } from "../domain/project";
 
 const instrumentSchema = z.enum(["synth", "bass", "kick", "snare", "hat", "pad", "sample"]);
 
@@ -42,11 +43,22 @@ const audioRegionSchema = z.object({
 
 export const snapshotSchema = z.object({
   revision: z.string(),
-  tempo: z.number().positive(),
+  tempo: TempoSchema,
+  meter: MeterSchema.default([4, 4]),
+  tempoMap: TempoMapSchema.optional(),
+  meterMap: MeterMapSchema.optional(),
   length: z.number().nonnegative(),
   tracks: z.array(trackSchema),
   notes: z.array(effectiveNoteSchema),
   regions: z.array(audioRegionSchema).default([]),
+}).superRefine((snapshot, context) => {
+  if (snapshot.tempoMap !== undefined && snapshot.tempoMap.points[0]?.bpm !== snapshot.tempo) {
+    context.addIssue({ code: "custom", path: ["tempoMap"], message: "tempo must equal the first tempo-map point" });
+  }
+  const firstMeter = snapshot.meterMap?.points[0];
+  if (firstMeter !== undefined && (firstMeter.numerator !== snapshot.meter[0] || firstMeter.denominator !== snapshot.meter[1])) {
+    context.addIssue({ code: "custom", path: ["meterMap"], message: "meter must equal the first meter-map point" });
+  }
 });
 
 export type Snapshot = Readonly<z.infer<typeof snapshotSchema>>;

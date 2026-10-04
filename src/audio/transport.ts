@@ -1,12 +1,8 @@
+import { beatAtSeconds, secondsAtBeat } from "../../shared/timing.mjs";
 import type { LoopRange } from "./types";
 
-export function secondsAtBeat(beat: number, tempo: number): number {
-  return (beat * 60) / tempo;
-}
-
-export function beatAtTime(seconds: number, tempo: number): number {
-  return (seconds * tempo) / 60;
-}
+export { beatAtSeconds, secondsAtBeat };
+export const beatAtTime = beatAtSeconds;
 
 export function normalizeLoopBeat(beat: number, loop: LoopRange | null): number {
   if (loop === null || beat < loop.end) {
@@ -17,7 +13,8 @@ export function normalizeLoopBeat(beat: number, loop: LoopRange | null): number 
 }
 
 export function validateLoop(loop: LoopRange, snapshotLength: number): LoopRange {
-  if (loop.start < 0 || loop.start >= loop.end || loop.end > snapshotLength) {
+  if (!Number.isFinite(loop.start) || !Number.isFinite(loop.end) ||
+      loop.start < 0 || loop.start >= loop.end || loop.end > snapshotLength) {
     throw new RangeError("loop must be inside the immutable snapshot");
   }
   return Object.freeze({ ...loop });

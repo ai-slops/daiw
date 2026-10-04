@@ -35,4 +35,16 @@ describe("audio transport math", () => {
     // Then
     expect(validate).toThrow(RangeError);
   });
+
+  it("converts elapsed seconds through an absolute tempo-map anchor", () => {
+    // Given
+    const tempoMap = { points: [{ at: 0, bpm: 120, curve: "step" as const }, { at: 4, bpm: 60, curve: "step" as const }] };
+
+    // When
+    const seconds = secondsAtBeat(6, tempoMap);
+
+    // Then
+    expect(seconds).toBe(4);
+    expect(beatAtTime(seconds, tempoMap)).toBe(6);
+  });
 });
