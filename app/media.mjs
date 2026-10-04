@@ -4,12 +4,40 @@ import { dirname, join } from 'node:path';
 import { z } from 'zod';
 import { runBinary } from './worker.mjs';
 import { ServiceError } from './errors.mjs';
+import { beatAtSeconds, secondsAtBeat, validateMeterMap, validateTempoMap } from '../shared/timing.mjs';
 
 const MAX_PCM_SAMPLES = 4_000_000;
 const MAX_RENDER_SAMPLES = 8_000_000;
 const MAX_PCM_JSON = 64 * 1024 * 1024;
 const decodedSchema = z.object({ sampleRate: z.number().int().min(8000).max(192000), channels: z.number().int().min(1).max(8), frames: z.number().int().positive().max(MAX_PCM_SAMPLES), samples: z.array(z.number().finite()).max(MAX_PCM_SAMPLES) });
-const snapshotSchema = z.object({ revision: z.string(), tempo: z.number().positive(), length: z.number().nonnegative(), regions: z.array(z.object({ assetId: z.string() }).passthrough()).default([]) }).passthrough();
+const tempoSchema = z.number().min(20).max(400);
+const meterSchema = z.tuple([z.number().int().min(1).max(255), z.number().int().min(1).max(255)]);
+const tempoMapSchema = z.object({ points: z.array(z.object({ at: z.number().nonnegative(), bpm: tempoSchema, curve: z.enum(['step', 'linear']) })).min(1).max(1024) }).superRefine((map, context) => {
+  try { validateTempoMap(map); } catch (error) {
+    if (!(error instanceof RangeError)) throw error;
+    context.addIssue({ code: 'custom', message: error.message });
+  }
+});
+const meterMapSchema = z.object({ points: z.array(z.object({ at: z.number().nonnegative(), numerator: z.number().int().min(1).max(255), denominator: z.number().int().min(1).max(255) })).min(1).max(1024) }).superRefine((map, context) => {
+  try { validateMeterMap(map); } catch (error) {
+    if (!(error instanceof RangeError)) throw error;
+    context.addIssue({ code: 'custom', message: error.message });
+  }
+});
+const snapshotSchema = z.object({ revision: z.string(), tempo: tempoSchema, meter: meterSchema.default([4, 4]), tempoMap: tempoMapSchema.optional(), meterMap: meterMapSchema.optional(), length: z.number().nonnegative(), regions: z.array(z.object({ assetId: z.string() }).passthrough()).default([]) }).passthrough().superRefine((snapshot, context) => {
+  if (snapshot.tempoMap?.points[0]?.bpm !== undefined && snapshot.tempoMap.points[0].bpm !== snapshot.tempo) context.addIssue({ code: 'custom', path: ['tempoMap'], message: 'tempo must equal the first tempo-map point' });
+  const firstMeter = snapshot.meterMap?.points[0];
+  if (firstMeter !== undefined && (firstMeter.numerator !== snapshot.meter[0] || firstMeter.denominator !== snapshot.meter[1])) context.addIssue({ code: 'custom', path: ['meterMap'], message: 'meter must equal the first meter-map point' });
+});
+
+export function importDurationBeats(startBeat, sourceSeconds, timing) {
+  const duration = beatAtSeconds(secondsAtBeat(startBeat, timing) + sourceSeconds, timing) - startBeat;
+  return Math.ceil(duration * 960 - 1e-9) / 960;
+}
+
+export function renderDurationSeconds(lengthBeats, timing) {
+  return secondsAtBeat(lengthBeats, timing);
+}
 
 export class MediaStore {
   #renderQueue = Promise.resolve();
@@ -60,7 +88,7 @@ export class MediaStore {
     const asset = { id: `asset-${hash}`, hash, name: file.name.slice(0, 200), frames: decoded.frames, sampleRate: decoded.sampleRate, channels: decoded.channels };
     await this.#contentAddressed(join(this.directory, 'cache/audio', `${hash}.${this.rendererFingerprint}.json`), JSON.stringify(decoded));
     this.service.store.db.prepare('INSERT OR IGNORE INTO assets VALUES (?,?,?,?)').run(asset.id, hash, asset.name, JSON.stringify(asset));
-    const duration = Math.round(decoded.frames / decoded.sampleRate * state.tempo / 60 * 960) / 960;
+    const duration = importDurationBeats(fields.start, decoded.frames / decoded.sampleRate, state.tempoMap ?? state.tempo);
     const regionId = createHash('sha256').update(`${projectId}:${idempotencyKey}`).digest('hex');
     return this.service.execute({ projectId, method: 'change.apply', idempotencyKey, params: { expectedRevision: fields.expectedRevision, command: { type: 'addAudioRegion', asset, region: { id: regionId, trackId: fields.trackId, assetId: asset.id, start: fields.start, duration, gain: 0, sourceOffset: 0 } } } });
   }
@@ -100,7 +128,7 @@ export class MediaStore {
     const result = z.object({ snapshot: snapshotSchema }).safeParse(response.result);
     const snapshot = result.success ? result.data.snapshot : snapshotSchema.parse(response.result);
     if (expectedRevision && snapshot.revision !== expectedRevision) throw new ServiceError('StaleRevision', 'The project changed before rendering. Refresh the audition snapshot.', 409);
-    if (snapshot.length / snapshot.tempo * 60 > 180) throw new ServiceError('ResourceLimit', 'This renderer supports arrangements up to 3 minutes.', 413);
+    if (renderDurationSeconds(snapshot.length, snapshot.tempoMap ?? snapshot.tempo) > 180) throw new ServiceError('ResourceLimit', 'This renderer supports arrangements up to 3 minutes.', 413);
     const assets = {};
     const assetIds = new Set(snapshot.regions.map((region) => region.assetId));
     let totalSamples = 0;
