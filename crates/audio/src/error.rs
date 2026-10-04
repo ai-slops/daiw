@@ -8,6 +8,12 @@ pub enum AudioError {
     InvalidLength,
     #[error("sample rate must be positive")]
     InvalidSampleRate,
+    #[error("time cannot be represented as a finite frame index")]
+    InvalidFrameCount,
+    #[error("render exceeds the {limit_frames}-frame output limit")]
+    RenderTooLarge { limit_frames: usize },
+    #[error("audio buffer allocation failed: {0}")]
+    Allocation(#[from] std::collections::TryReserveError),
     #[error("asset {asset_id} has invalid channel count {channels}")]
     InvalidAssetChannels { asset_id: String, channels: u16 },
     #[error("asset {asset_id} PCM length is not divisible by {channels} channels")]

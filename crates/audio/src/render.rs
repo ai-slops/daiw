@@ -1,15 +1,10 @@
 use std::f64::consts::TAU;
 
-use crate::validate::validate_request;
+use crate::render_clock::{RenderClock, checked_frame_index, silent_buffer};
+use crate::validate::{finite, finite_samples, positive, validate_request};
 use crate::{AudioError, EffectiveNote, Instrument, PcmAsset, RenderRequest, RenderedAudio, Track};
 
 pub const DEFAULT_SAMPLE_RATE: u32 = 48_000;
-
-struct RenderClock {
-    sample_rate: u32,
-    tempo: f64,
-    total_frames: usize,
-}
 
 pub fn render(request: &RenderRequest) -> Result<RenderedAudio, AudioError> {
     render_with_sample_rate(request, DEFAULT_SAMPLE_RATE)
@@ -20,25 +15,30 @@ pub fn render_with_sample_rate(
     sample_rate: u32,
 ) -> Result<RenderedAudio, AudioError> {
     validate_request(request, sample_rate)?;
-    let clock = RenderClock {
-        sample_rate,
-        tempo: request.snapshot.tempo,
-        total_frames: beat_to_frame(request.snapshot.length, request.snapshot.tempo, sample_rate),
-    };
-    let mut master = vec![0.0_f32; clock.total_frames.saturating_mul(2)];
+    let clock = RenderClock::new(&request.snapshot, sample_rate)?;
+    let samples = clock
+        .total_frames
+        .checked_mul(2)
+        .ok_or(AudioError::InvalidFrameCount)?;
+    let mut master = silent_buffer(samples)?;
+    let mut stereo = Vec::new();
     let soloed = request.snapshot.tracks.iter().any(|track| track.solo);
     for track in &request.snapshot.tracks {
-        if track.mute || (soloed && !track.solo) {
+        if clock.total_frames == 0 || track.mute || (soloed && !track.solo) {
             continue;
         }
-        let mut stereo = vec![0.0_f32; clock.total_frames.saturating_mul(2)];
+        if stereo.len() != samples {
+            stereo = silent_buffer(samples)?;
+        } else {
+            stereo.fill(0.0);
+        }
         for note in request
             .snapshot
             .notes
             .iter()
             .filter(|note| note.track_id == track.id)
         {
-            render_note(&mut stereo, note, track.instrument, &clock);
+            render_note(&mut stereo, note, track.instrument, &clock)?;
         }
         for region in request
             .snapshot
@@ -53,11 +53,13 @@ pub fn render_with_sample_rate(
                     .ok_or_else(|| AudioError::MissingAsset {
                         asset_id: region.asset_id.clone(),
                     })?;
-            render_region(&mut stereo, region, asset, &clock);
+            render_region(&mut stereo, region, asset, &clock)?;
         }
         lowpass(&mut stereo, track.cutoff, sample_rate);
-        mix_track(&mut master, &stereo, track);
+        finite_samples(&stereo, &track.id)?;
+        mix_track(&mut master, &stereo, track)?;
     }
+    finite_samples(&master, "master")?;
     Ok(RenderedAudio {
         sample_rate,
         channels: 2,
@@ -65,21 +67,35 @@ pub fn render_with_sample_rate(
     })
 }
 
-fn beat_to_frame(beat: f64, tempo: f64, sample_rate: u32) -> usize {
-    (beat.max(0.0) * 60.0 / tempo * f64::from(sample_rate)).round() as usize
-}
-
 fn render_note(
     output: &mut [f32],
     note: &EffectiveNote,
     instrument: Instrument,
     clock: &RenderClock,
-) {
-    let start = beat_to_frame(note.start, clock.tempo, clock.sample_rate).min(clock.total_frames);
-    let frames = beat_to_frame(note.duration, clock.tempo, clock.sample_rate);
-    let end = start.saturating_add(frames).min(clock.total_frames);
-    let frequency = 440.0 * 2.0_f64.powf((note.pitch - 69.0) / 12.0);
-    for offset in 0..end.saturating_sub(start) {
+) -> Result<(), AudioError> {
+    if instrument == Instrument::Sample {
+        return Ok(());
+    }
+    let start = clock.frame_at(note.start)?;
+    if start >= clock.total_frames {
+        return Ok(());
+    }
+    let frames = clock.frame_at(note.duration)?;
+    let actual_frames = frames.min(clock.total_frames - start);
+    if actual_frames == 0 {
+        return Ok(());
+    }
+    let frequency = match instrument {
+        Instrument::Synth | Instrument::Bass | Instrument::Pad => {
+            let frequency = 440.0 * 2.0_f64.powf((note.pitch - 69.0) / 12.0);
+            positive(&note.id, "frequency", frequency)?;
+            let last_time = (actual_frames - 1) as f64 / f64::from(clock.sample_rate);
+            finite(&note.id, "phase", frequency * last_time)?;
+            frequency
+        }
+        Instrument::Kick | Instrument::Snare | Instrument::Hat | Instrument::Sample => 0.0,
+    };
+    for offset in 0..actual_frames {
         let time = offset as f64 / f64::from(clock.sample_rate);
         let progress = offset as f64 / frames.max(1) as f64;
         let envelope = note_envelope(progress, instrument);
@@ -89,6 +105,7 @@ fn render_note(
         output[target] += sample;
         output[target + 1] += sample;
     }
+    Ok(())
 }
 
 fn note_envelope(progress: f64, instrument: Instrument) -> f64 {
@@ -134,27 +151,43 @@ fn render_region(
     region: &crate::AudioRegion,
     asset: &PcmAsset,
     clock: &RenderClock,
-) {
-    let start = beat_to_frame(region.start, clock.tempo, clock.sample_rate);
-    let duration = beat_to_frame(region.duration, clock.tempo, clock.sample_rate);
-    let source_start =
-        (region.source_offset.max(0.0) * f64::from(asset.sample_rate)).round() as usize;
+) -> Result<(), AudioError> {
+    let start = clock.frame_at(region.start)?;
+    if start >= clock.total_frames {
+        return Ok(());
+    }
+    let duration = clock
+        .frame_at(region.duration)?
+        .min(clock.total_frames - start);
+    if duration == 0 {
+        return Ok(());
+    }
+    let source_start = checked_frame_index(
+        (region.source_offset.max(0.0) * f64::from(asset.sample_rate)).round(),
+    )?;
+    let channel_count = usize::from(asset.channels);
+    let source_frames = asset.samples.len() / channel_count;
+    if source_start >= source_frames {
+        return Ok(());
+    }
+    let remaining =
+        u64::try_from(source_frames - source_start).map_err(|_| AudioError::InvalidFrameCount)?;
     for target_offset in 0..duration {
-        let target = start.saturating_add(target_offset);
-        if target.saturating_mul(2) >= output.len() {
+        let offset = u64::try_from(target_offset).map_err(|_| AudioError::InvalidFrameCount)?;
+        let source_offset = offset
+            .checked_mul(u64::from(asset.sample_rate))
+            .ok_or(AudioError::InvalidFrameCount)?
+            / u64::from(clock.sample_rate);
+        if source_offset >= remaining {
             break;
         }
-        let source_frame = source_start.saturating_add(
-            target_offset.saturating_mul(asset.sample_rate as usize) / clock.sample_rate as usize,
-        );
-        let channel_count = usize::from(asset.channels);
-        let source = source_frame.saturating_mul(channel_count);
-        let frame = asset
-            .samples
-            .get(source..source.saturating_add(channel_count));
+        let source_frame = source_start
+            + usize::try_from(source_offset).map_err(|_| AudioError::InvalidFrameCount)?;
+        let source = source_frame * channel_count;
+        let frame = asset.samples.get(source..source + channel_count);
         if let Some(channels) = frame {
             let gain = 10.0_f32.powf(region.gain as f32 / 20.0);
-            let target_sample = target * 2;
+            let target_sample = (start + target_offset) * 2;
             if channels.len() == 1 {
                 output[target_sample] += channels[0] * gain;
                 output[target_sample + 1] += channels[0] * gain;
@@ -164,6 +197,7 @@ fn render_region(
             }
         }
     }
+    Ok(())
 }
 
 fn lowpass(samples: &mut [f32], cutoff: f64, sample_rate: u32) {
@@ -179,13 +213,17 @@ fn lowpass(samples: &mut [f32], cutoff: f64, sample_rate: u32) {
     }
 }
 
-fn mix_track(master: &mut [f32], stereo: &[f32], track: &Track) {
+fn mix_track(master: &mut [f32], stereo: &[f32], track: &Track) -> Result<(), AudioError> {
     let gain = 10.0_f64.powf(track.gain / 20.0);
+    finite(&track.id, "linearGain", gain)?;
     let pan = track.pan.clamp(-1.0, 1.0);
     let left = gain * ((1.0 - pan) * 0.5).sqrt();
     let right = gain * ((1.0 + pan) * 0.5).sqrt();
+    finite(&track.id, "panGain", left)?;
+    finite(&track.id, "panGain", right)?;
     for (target, source) in master.chunks_exact_mut(2).zip(stereo.chunks_exact(2)) {
         target[0] += (f64::from(source[0]) * left) as f32;
         target[1] += (f64::from(source[1]) * right) as f32;
     }
+    Ok(())
 }

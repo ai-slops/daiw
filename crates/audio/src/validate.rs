@@ -23,7 +23,14 @@ pub fn validate_request(request: &RenderRequest, sample_rate: u32) -> Result<(),
         finite(&track.id, "pan", track.pan)?;
         positive(&track.id, "cutoff", track.cutoff)?;
     }
+    let mut note_ids = HashSet::new();
     for note in &request.snapshot.notes {
+        if !note_ids.insert(&note.id) {
+            return Err(AudioError::InvalidValue {
+                entity_id: note.id.clone(),
+                field: "id",
+            });
+        }
         track_reference(&track_ids, &note.id, &note.track_id)?;
         nonnegative(&note.id, "start", note.start)?;
         nonnegative(&note.id, "duration", note.duration)?;
@@ -85,7 +92,7 @@ fn track_reference(
     }
 }
 
-fn finite(entity_id: &str, field: &'static str, value: f64) -> Result<(), AudioError> {
+pub(crate) fn finite(entity_id: &str, field: &'static str, value: f64) -> Result<(), AudioError> {
     if value.is_finite() {
         Ok(())
     } else {
@@ -96,7 +103,7 @@ fn finite(entity_id: &str, field: &'static str, value: f64) -> Result<(), AudioE
     }
 }
 
-fn positive(entity_id: &str, field: &'static str, value: f64) -> Result<(), AudioError> {
+pub(crate) fn positive(entity_id: &str, field: &'static str, value: f64) -> Result<(), AudioError> {
     if value.is_finite() && value > 0.0 {
         Ok(())
     } else {
@@ -116,4 +123,14 @@ fn nonnegative(entity_id: &str, field: &'static str, value: f64) -> Result<(), A
             field,
         })
     }
+}
+
+pub(crate) fn finite_samples(samples: &[f32], entity_id: &str) -> Result<(), AudioError> {
+    if samples.iter().any(|sample| !sample.is_finite()) {
+        return Err(AudioError::InvalidValue {
+            entity_id: entity_id.to_owned(),
+            field: "samples",
+        });
+    }
+    Ok(())
 }

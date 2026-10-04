@@ -1,6 +1,7 @@
 use crate::{AudioError, RenderedAudio};
 
 pub fn wav(audio: &RenderedAudio) -> Result<Vec<u8>, AudioError> {
+    crate::validate::finite_samples(&audio.samples, "rendered audio")?;
     let payload_len = audio
         .samples
         .len()
@@ -23,7 +24,8 @@ pub fn wav(audio: &RenderedAudio) -> Result<Vec<u8>, AudioError> {
         .ok()
         .and_then(|length| length.checked_add(44))
         .ok_or(AudioError::WavTooLarge)?;
-    let mut output = Vec::with_capacity(capacity);
+    let mut output = Vec::new();
+    output.try_reserve_exact(capacity)?;
     output.extend_from_slice(b"RIFF");
     output.extend_from_slice(&riff_len.to_le_bytes());
     output.extend_from_slice(b"WAVEfmt ");
