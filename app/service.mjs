@@ -6,11 +6,11 @@ import { ServiceError } from './errors.mjs';
 
 export const rpcSchema = z.object({
   projectId: z.string().min(1).max(160).optional(),
-  method: z.enum(['project.create', 'project.import', 'project.get', 'project.validate', 'project.snapshot', 'project.explain', 'project.hash', 'project.history', 'change.dryRun', 'change.apply', 'proposal.create', 'proposal.accept', 'proposal.reject', 'project.undo', 'project.redo']),
+  method: z.enum(['project.create', 'project.import', 'project.export', 'project.get', 'project.queryNotes', 'project.validate', 'project.snapshot', 'project.explain', 'project.hash', 'project.history', 'change.dryRun', 'change.apply', 'proposal.create', 'proposal.accept', 'proposal.reject', 'project.undo', 'project.redo']),
   params: z.record(z.string(), z.unknown()).default({}),
   idempotencyKey: z.string().min(1).max(160).optional(),
 });
-const queries = new Set(['project.get', 'project.validate', 'project.snapshot', 'project.explain', 'project.hash', 'project.history', 'change.dryRun']);
+const queries = new Set(['project.get', 'project.export', 'project.queryNotes', 'project.validate', 'project.snapshot', 'project.explain', 'project.hash', 'project.history', 'change.dryRun']);
 const agentMethods = new Set([...queries, 'proposal.create']);
 
 export class ProjectService {

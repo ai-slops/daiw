@@ -162,3 +162,65 @@ test('empty note identities are rejected at the typed command boundary', async (
   assert.equal(response.ok, false);
   assert.equal(service.store.get(state.id).revision, state.revision);
 });
+
+test('native compatibility failures cannot create projects or mutate stored HEAD', async (t) => {
+  const { service, state } = await fixture(t);
+  const exported = await service.execute({ projectId: state.id, method: 'project.export', params: {} });
+  assert.equal(exported.ok, true);
+  const before = service.store.list();
+  const badVersion = { ...exported.result, formatVersion: 99 };
+  const badFeature = { ...exported.result, requiredFeatures: ['unknown-required'] };
+  const tampered = structuredClone(exported.result);
+  tampered.content.name = 'Tampered';
+  for (const document of [badVersion, badFeature, tampered]) {
+    const rejected = await service.execute({ method: 'project.import', params: { project: document } });
+    assert.equal(rejected.ok, false);
+    assert.equal(rejected.state, undefined);
+    assert.deepEqual(service.store.list(), before);
+    assert.deepEqual(service.store.get(state.id), state);
+  }
+});
+
+test('explicit-empty ordering remains a required native feature', async (t) => {
+  const { service, state } = await fixture(t);
+  const ordered = await service.execute({ projectId: state.id, method: 'change.apply', params: { expectedRevision: state.revision, command: { type: 'setModifierOrdering', instanceId: state.instances[0].id, ordering: { edges: [] } } } });
+  assert.equal(ordered.ok, true);
+  const exported = await service.execute({ projectId: state.id, method: 'project.export', params: {} });
+  assert.ok(exported.result.requiredFeatures.includes('modifier-ordering-v1'));
+  const imported = await service.execute({ method: 'project.import', params: { project: exported.result } });
+  assert.equal(imported.ok, true, JSON.stringify(imported));
+  assert.deepEqual(imported.state.instances[0].modifierOrdering, { edges: [] });
+});
+
+test('agent note selection drives a scoped dry-run and human-only local transform', async (t) => {
+  const { service, state } = await fixture(t);
+  const selected = await service.execute({ projectId: state.id, method: 'project.queryNotes', params: { instanceId: state.instances[0].id, scope: 'instance', selector: { type: 'namedSlot', slot: 'ending-fill' }, maxResults: 16 } }, 'agent');
+  assert.equal(selected.ok, true, JSON.stringify(selected));
+  assert.equal(selected.result.selection.cardinality, 1);
+  assert.deepEqual(selected.state, state);
+  const command = { type: 'transformSelectedNotes', selection: selected.result.selection, transform: { type: 'transpose', semitones: 12 } };
+  const preview = await service.execute({ projectId: state.id, method: 'change.dryRun', params: { expectedRevision: state.revision, command } }, 'agent');
+  assert.equal(preview.result.executable, true);
+  assert.deepEqual(preview.result.affectedInstances, [state.instances[0].id]);
+  await assert.rejects(service.execute({ projectId: state.id, method: 'change.apply', params: { expectedRevision: state.revision, command } }, 'agent'), { code: 'PermissionDenied' });
+  const applied = await service.execute({ projectId: state.id, method: 'change.apply', params: { expectedRevision: state.revision, command } });
+  assert.equal(applied.ok, true, JSON.stringify(applied));
+  const snapshot = await service.execute({ projectId: state.id, method: 'project.snapshot', params: {} });
+  const endings = snapshot.result.snapshot.notes.filter((note) => note.origin.noteId === 'note-chorus-four');
+  assert.equal(endings.find((note) => note.instanceId === state.instances[0].id).pitch, 78);
+  assert.equal(endings.find((note) => note.instanceId === state.instances[1].id).pitch, 66);
+  const stale = await service.execute({ projectId: state.id, method: 'change.apply', params: { expectedRevision: applied.state.revision, command } });
+  assert.equal(stale.ok, false);
+  assert.equal(stale.error.code, 'SelectionStale');
+  assert.deepEqual(service.store.get(state.id), applied.state);
+});
+
+test('missing slots and oversized selections fail without changing state', async (t) => {
+  const { service, state } = await fixture(t);
+  for (const [selector, maxResults, code] of [[{ type: 'namedSlot', slot: 'missing' }, 16, 'SelectionInvalid'], [{ type: 'all' }, 1, 'SelectionLimitExceeded']]) {
+    const result = await service.execute({ projectId: state.id, method: 'project.queryNotes', params: { instanceId: state.instances[0].id, scope: 'source', selector, maxResults } });
+    assert.equal(result.ok, false);
+    assert.equal(result.error.code, code);
+    assert.deepEqual(service.store.get(state.id), state);
+  }
+});

@@ -8,7 +8,7 @@ import { containedPath } from './paths.mjs';
 
 const contentTypes = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.woff2': 'font/woff2', '.json': 'application/json' };
 const safeEqual = (a, b) => typeof a === 'string' && Buffer.byteLength(a) === Buffer.byteLength(b) && timingSafeEqual(Buffer.from(a), Buffer.from(b));
-const domainStatus = (code) => ({ StaleRevision: 409, IdempotencyConflict: 409, EmptyHistory: 409, PermissionDenied: 403, MissingProject: 404, MissingAsset: 404, ResourceLimit: 413 })[code] ?? 422;
+const domainStatus = (code) => ({ StaleRevision: 409, SelectionStale: 409, IdempotencyConflict: 409, EmptyHistory: 409, PermissionDenied: 403, MissingProject: 404, MissingAsset: 404, ResourceLimit: 413, SelectionLimitExceeded: 413 })[code] ?? 422;
 
 async function body(request, limit = 2 * 1024 * 1024) {
   let length = 0;
@@ -70,7 +70,8 @@ export function createHandler({ service, media, staticRoot, agentToken, allowedH
           const projectId = decodeURIComponent(resource[1]);
           if (resource[2] === 'export') {
             response.setHeader('Content-Disposition', 'attachment; filename="project.daiw.json"');
-            return send(response, 200, service.store.get(projectId));
+            const exported = await service.execute({ projectId, method: 'project.export', params: {} });
+            return send(response, exported.ok ? 200 : domainStatus(exported.error.code), exported.ok ? exported.result : exported);
           }
           const rendered = await media.render(projectId, url.searchParams.get('proposalId'), url.searchParams.get('expectedRevision'));
           response.writeHead(200, { 'content-type': 'audio/wav', 'content-length': rendered.wav.length, 'X-DAIW-Revision': rendered.revision, ETag: `"${rendered.key}"`, 'cache-control': 'private, no-cache', 'Content-Disposition': 'inline; filename="daiw-mix.wav"' });

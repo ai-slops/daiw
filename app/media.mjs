@@ -64,9 +64,14 @@ export class MediaStore {
     const regionId = createHash('sha256').update(`${projectId}:${idempotencyKey}`).digest('hex');
     return this.service.execute({ projectId, method: 'change.apply', idempotencyKey, params: { expectedRevision: fields.expectedRevision, command: { type: 'addAudioRegion', asset, region: { id: regionId, trackId: fields.trackId, assetId: asset.id, start: fields.start, duration, gain: 0, sourceOffset: 0 } } } });
   }
-  async #decoded(assetId) {
-    const asset = this.service.store.db.prepare('SELECT hash FROM assets WHERE id=?').get(assetId);
+  async #decoded(reference) {
+    const assetId = reference.id;
+    const asset = this.service.store.db.prepare('SELECT hash, metadata FROM assets WHERE id=?').get(assetId);
     if (!asset) throw new ServiceError('MissingAsset', 'An audio source is missing from this project.', 422);
+    const metadata = z.object({ hash: z.string(), frames: z.number().int().positive(), channels: z.number().int().positive(), sampleRate: z.number().int().positive() }).parse(JSON.parse(asset.metadata));
+    if (asset.hash !== reference.hash || metadata.hash !== reference.hash || metadata.frames !== reference.frames || metadata.channels !== reference.channels || metadata.sampleRate !== reference.sampleRate) {
+      throw new ServiceError('CorruptAsset', 'The local audio source does not match this project’s asset fingerprint or metadata.', 422);
+    }
     const blob = await readFile(join(this.directory, 'objects', asset.hash)).catch((error) => {
       if (error instanceof Error && 'code' in error && error.code === 'ENOENT') throw new ServiceError('MissingAsset', 'An original audio blob is missing.', 422);
       throw error;
@@ -106,7 +111,11 @@ export class MediaStore {
       totalSamples += metadata.frames * metadata.channels;
       if (totalSamples > MAX_RENDER_SAMPLES) throw new ServiceError('ResourceLimit', 'Sources exceed the 8-million-sample render memory budget.', 413);
     }
-    for (const assetId of assetIds) assets[assetId] = await this.#decoded(assetId);
+    for (const assetId of assetIds) {
+      const reference = response.state.assets.find((asset) => asset.id === assetId);
+      if (!reference) throw new ServiceError('MissingAsset', 'The snapshot refers to an unknown project asset.', 422);
+      assets[assetId] = await this.#decoded(reference);
+    }
     const input = { ...snapshot, assets };
     const key = createHash('sha256').update(JSON.stringify(input)).update(this.rendererFingerprint).update('daiw-render-v1-48000').digest('hex');
     const path = join(this.directory, 'cache/render', `${key}.wav`);
@@ -122,8 +131,9 @@ export class MediaStore {
   }
   async waveform(projectId, assetId) {
     const state = this.service.store.get(projectId);
-    if (!state.assets.some((asset) => asset.id === assetId)) throw new ServiceError('MissingAsset', 'This source is not part of the project.', 404);
-    const decoded = await this.#decoded(assetId);
+    const reference = state.assets.find((asset) => asset.id === assetId);
+    if (!reference) throw new ServiceError('MissingAsset', 'This source is not part of the project.', 404);
+    const decoded = await this.#decoded(reference);
     const width = 128;
     const peaks = Array.from({ length: width }, (_, bin) => {
       const start = Math.floor(bin * decoded.samples.length / width);

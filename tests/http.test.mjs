@@ -46,9 +46,39 @@ test('the HTTP surface creates, edits, exports, and reopens a project', async (t
   // Then export and subsequent open agree on the durable musical result.
   assert.equal(edited.status, 200, JSON.stringify(edited));
   const exported = await (await fetch(`${base}/api/projects/${state.id}/export`)).json();
-  assert.equal(exported.tempo, 110);
+  assert.equal(exported.format, 'daiw-project');
+  assert.equal(exported.content.tempo, 110);
   const opened = await rpc({ projectId: state.id, method: 'project.get', params: {} });
-  assert.deepEqual(opened.body.state, exported);
+  assert.deepEqual(opened.body.state, exported.content);
+});
+
+test('local note edits preserve later source changes through HTTP and native export', async (t) => {
+  const { base, rpc } = await fixture(t);
+  const created = await rpc({ method: 'project.create', params: { fixture: true } });
+  const original = created.body.state;
+  const instanceId = original.instances[0].id;
+  const local = original.definitions[0].notes.map((note, index) => index === 0 ? { ...note, pitch: 49 } : note);
+  const edited = await rpc({ projectId: original.id, method: 'change.apply', params: { expectedRevision: original.revision, command: { type: 'editNotes', instanceId, scope: 'instance', notes: local } } });
+  assert.equal(edited.status, 200, JSON.stringify(edited));
+  const source = original.definitions[0].notes.map((note, index) => index === 1 ? { ...note, pitch: 77 } : note);
+
+  const updated = await rpc({ projectId: original.id, method: 'change.apply', params: { expectedRevision: edited.body.state.revision, command: { type: 'editNotes', instanceId, scope: 'source', notes: source } } });
+
+  assert.equal(updated.status, 200, JSON.stringify(updated));
+  const explanation = await rpc({ projectId: original.id, method: 'project.explain', params: { instanceId } });
+  assert.equal(explanation.status, 200, JSON.stringify(explanation));
+  assert.deepEqual(explanation.body.result.effectiveNotes.map((note) => note.pitch), [49, 77, 68, 66]);
+  const exported = await (await fetch(`${base}/api/projects/${original.id}/export`)).json();
+  assert.deepEqual(exported.content.instances[0].overrides, [{ type: 'patchNotes', updates: [local[0]], added: [], removed: [] }]);
+  const imported = await rpc({ method: 'project.import', params: { project: exported } });
+  assert.equal(imported.status, 200, JSON.stringify(imported));
+  const reopened = await rpc({ projectId: imported.body.state.id, method: 'project.explain', params: { instanceId } });
+  assert.deepEqual(reopened.body.result.effectiveNotes, explanation.body.result.effectiveNotes);
+  const removed = await rpc({ projectId: original.id, method: 'change.apply', params: { expectedRevision: updated.body.state.revision, command: { type: 'editNotes', instanceId, scope: 'source', notes: source.slice(1) } } });
+  assert.equal(removed.status, 200, JSON.stringify(removed));
+  const blocked = await fetch(`${base}/api/projects/${original.id}/render.wav`);
+  assert.equal(blocked.status, 422);
+  assert.equal((await blocked.json()).error.code, 'RebaseConflict');
 });
 
 test('a missing session and an agent main-write attempt are rejected at HTTP', async (t) => {
@@ -63,6 +93,38 @@ test('a missing session and an agent main-write attempt are rejected at HTTP', a
   assert.equal(agent.status, 403);
 });
 
+test('agent dry-run reports target conflicts and shared impact without persisting a change', async (t) => {
+  const { base, rpc } = await fixture(t);
+  const created = await rpc({ method: 'project.create', params: { fixture: true } });
+  const original = created.body.state;
+  const instanceId = original.instances[0].id;
+  const notes = original.definitions[0].notes.map((note, index) => index === 0 ? { ...note, pitch: 49 } : note);
+  const edited = await rpc({ projectId: original.id, method: 'change.apply', params: { expectedRevision: original.revision, command: { type: 'editNotes', instanceId, scope: 'instance', notes } } });
+  assert.equal(edited.status, 200, JSON.stringify(edited));
+  const state = edited.body.state;
+
+  const response = await fetch(`${base}/api/agent`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: 'Bearer test-agent-secret' },
+    body: JSON.stringify({ projectId: state.id, method: 'change.dryRun', params: { expectedRevision: state.revision, command: { type: 'editNotes', instanceId, scope: 'source', notes: state.definitions[0].notes.slice(1) } } }),
+  });
+  const preview = await response.json();
+
+  assert.equal(response.status, 200, JSON.stringify(preview));
+  assert.equal(preview.result.executable, true);
+  assert.equal(preview.result.noteResolution.ready, false);
+  assert.deepEqual(preview.result.affectedInstances, ['instance-chorus-a', 'instance-chorus-b', 'instance-chorus-c']);
+  const report = preview.result.noteResolution.instances[0];
+  assert.equal(report.before.status, 'clean');
+  assert.equal(report.after.status, 'conflict');
+  assert.deepEqual(report.after.target, { kind: 'missing', noteId: 'note-chorus-root' });
+  assert.deepEqual(report.after.actions, ['restoreMissingNote', 'editInstanceNotes']);
+  assert.deepEqual(preview.result.impact.previewRanges.map((range) => range.after), [{ start: 24, end: 32 }, { start: 56, end: 64 }, { start: 120, end: 128 }]);
+  assert.deepEqual(preview.state, state);
+  const exported = await (await fetch(`${base}/api/projects/${state.id}/export`)).json();
+  assert.deepEqual(exported.content, state);
+});
+
 test('cross-site token retrieval is blocked and invalid JSON receives a typed error', async (t) => {
   // Given the same-origin session boundary.
   const { base, token } = await fixture(t);
@@ -75,6 +137,51 @@ test('cross-site token retrieval is blocked and invalid JSON receives a typed er
   assert.equal((await invalid.json()).error.code, 'InvalidRequest');
   const rebinding = await fetch(`${base}/api/session`, { headers: { host: 'evil.example', origin: 'http://evil.example' } });
   assert.equal(rebinding.status, 403);
+});
+
+test('slot bindings persist and require human revision-bound rebase through HTTP', async (t) => {
+  const { base, rpc } = await fixture(t);
+  const created = await rpc({ method: 'project.create', params: { fixture: true } });
+  let state = created.body.state;
+  const instanceId = state.instances[0].id;
+  const operations = [{ type: 'replaceSlot', slot: 'ending-fill', notes: [{ ...state.definitions[0].notes[3], id: 'replacement-fill', pitch: 80 }] }];
+  const modifier = await rpc({ projectId: state.id, method: 'change.apply', params: { expectedRevision: state.revision, command: { type: 'createModifier', name: 'Bound fill', operations } } });
+  assert.equal(modifier.status, 200, JSON.stringify(modifier));
+  state = modifier.body.state;
+  const modifierId = state.modifiers.at(-1).id;
+  const attached = await rpc({ projectId: state.id, method: 'change.apply', params: { expectedRevision: state.revision, command: { type: 'applyModifier', instanceId, modifierId } } });
+  assert.equal(attached.status, 200, JSON.stringify(attached));
+  state = attached.body.state;
+  assert.equal(state.instances[0].modifierBindings[modifierId].definitionRevision, 0);
+  const previousRevision = state.revision;
+  const notes = state.definitions[0].notes.map((note, index) => index === 0 ? { ...note, pitch: 62 } : note);
+  const changed = await rpc({ projectId: state.id, method: 'change.apply', params: { expectedRevision: state.revision, command: { type: 'editNotes', instanceId, scope: 'source', notes } } });
+  assert.equal(changed.status, 200, JSON.stringify(changed));
+  state = changed.body.state;
+  const command = { type: 'rebaseModifier', instanceId, modifierId };
+  const blocked = await rpc({ projectId: state.id, method: 'project.snapshot', params: {} });
+  assert.equal(blocked.body.error.code, 'RebaseConflict');
+  const preview = await rpc({ projectId: state.id, method: 'change.dryRun', params: { expectedRevision: state.revision, command } });
+  assert.equal(preview.status, 200, JSON.stringify(preview));
+  assert.deepEqual(preview.body.state, state);
+  assert.equal(preview.body.result.noteResolution.instances[0].before.binding.reason, 'sourceRevisionChanged');
+  assert.equal(preview.body.result.noteResolution.instances[0].after.status, 'clean');
+  const stale = await rpc({ projectId: state.id, method: 'change.apply', params: { expectedRevision: previousRevision, command } });
+  assert.equal(stale.status, 409);
+  const agent = await fetch(`${base}/api/agent`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer test-agent-secret' }, body: JSON.stringify({ projectId: state.id, method: 'change.apply', params: { expectedRevision: state.revision, command } }) });
+  assert.equal(agent.status, 403);
+  const rebased = await rpc({ projectId: state.id, method: 'change.apply', params: { expectedRevision: state.revision, command } });
+  assert.equal(rebased.status, 200, JSON.stringify(rebased));
+  assert.deepEqual(rebased.body.state.definitions, state.definitions);
+  assert.deepEqual(rebased.body.state.modifiers, state.modifiers);
+  assert.equal(rebased.body.state.instances[0].modifierBindings[modifierId].definitionRevision, 1);
+  const exported = await (await fetch(`${base}/api/projects/${state.id}/export`)).json();
+  const imported = await rpc({ method: 'project.import', params: { project: exported } });
+  assert.equal(imported.status, 200, JSON.stringify(imported));
+  assert.deepEqual(imported.body.state.instances[0].modifierBindings, exported.content.instances[0].modifierBindings);
+  const rendered = await rpc({ projectId: imported.body.state.id, method: 'project.snapshot', params: {} });
+  assert.equal(rendered.status, 200, JSON.stringify(rendered));
+  assert.ok(rendered.body.result.snapshot.notes.some((note) => note.instanceId === instanceId && note.origin.noteId === 'replacement-fill' && note.pitch === 80));
 });
 
 test('thrown domain errors preserve their HTTP status and code', async (t) => {
