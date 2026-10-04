@@ -23,6 +23,8 @@ Responses use `{id,ok:true,state,result}` or `{ok:false,error:{code,message}}`. 
 
 ## Editing and review
 
+Tempo/meter maps and `setTempoMap`, `setMeterMap`, `setMeter` are now supported alongside `setTempo`. Constant setters clear the corresponding map. See [timing.md](timing.md) for wire examples, validation, mapped render/seek semantics and the point-table editor.
+
 1. Query `project.get` or `project.explain`.
 2. Send `change.dryRun` with `expectedRevision` and a typed command. Inspect both structural `executable` and optional scoped `noteResolution.ready`, not just the former.
 3. Human edits use `change.apply`; assistant edits use `proposal.create`.
