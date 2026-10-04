@@ -4,6 +4,8 @@ A structured digital audio workstation built around shared **Definitions**, plac
 
 ## Implementation target
 
+The [original design baseline and requirements index](docs/design-baseline.md) records the supplied 2026-09-01 plan, including all 25 section topics, appendices, architectural decisions, and stage gates. It describes the target, not completed functionality. See the [current progress audit](docs/progress.md) for implementation gaps and next work.
+
 This repository targets stages 0 and 1 of the supplied design: a headless Rust domain engine and a first desktop-oriented vertical slice. Recording, comping, third-party plugins, collaboration, and interchange beyond native projects belong to stages 2–4. See [the roadmap](docs/roadmap.md) for the later work and [the integration contract](docs/contract.md) for current interfaces.
 
 The `.dim/` lifecycle configuration is preserved. Its `node app/server.mjs` entrypoint hosts the client and delegates canonical project operations to Rust. SQLite stores immutable snapshots, a command journal, and the current head in one transaction. GUI state is never the canonical project.

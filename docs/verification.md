@@ -2,7 +2,92 @@
 
 This file records evidence, not aspirations. The supplied design remains the product target; the current repository must not be described as having passed every stage-1 acceptance condition.
 
-## Results from this implementation run
+## Latest follow-up: native exchange and bounded selection (2026-10-03)
+
+- **159 Rust tests**, **41 host/storage/HTTP tests**, and **39 client tests** passed. Rust fmt, Clippy workspace/all targets with warnings denied, rebuilt workers and TypeScript/Vite production build passed. Upstream Zod annotation warnings remain non-blocking.
+- Native tests cover legacy/envelope import, unknown versions/features/semantic fields, canonical hash integrity, signed zero, portable integers and finite-float round trips. Selector tests cover deterministic bounds, onset membership, source/local scope, project/revision binding and human-only apply.
+- Independent review reproduced a no-op source transform advancing the definition revision. A failing regression now passes: empty and unchanged selected transforms return `InvalidParams` before edit mutation.
+- Independent live HTTP driver queried one note, dry-ran/applied local transposition, rejected a stale handle with 409, rejected tampered content and a future version, imported under a new identity, reopened an identical state after service restart, and rendered a non-silent **13,165,760-byte WAV**. The disposable database was removed.
+- Browser file import was exercised through real Chromium in Docker: invalid JSON displayed an error; native JSON opened a new project and closed the dialog. Worker QA additionally covered unsupported versions. Independent visual review found mobile error wrapping and duplicate dimmed toast issues; both were fixed. Fresh normal/error captures at 375, 768 and 1280 pixels passed independent review. Evidence: `.omo/evidence/import-ui/review-*.png`.
+- Rust and TypeScript LSP diagnostics passed on the changed selector/import modules and UI. CSS LSP was unavailable; production CSS compilation and browser captures supplied validation instead. Local Chrome dependencies could not be installed within download timeouts, so browser verification used the Playwright Docker image.
+- Contract clarifications: hashes cover typed/default-normalized canonical content, not raw document bytes; instance edits own whole note records, not individual fields. Review also identified the pre-existing unauthenticated decoded-cache payload limitation, recorded in [native-exchange.md](native-exchange.md), not fixed in this batch.
+- Physical audio devices, Windows desktop, long-session performance, full media archives and migration qualification were not tested. No full stage-0/1 completion is claimed.
+
+## Previous follow-up: renderer numeric safety
+
+- **139 Rust tests** passed, default features (17 new numeric/rounding/allocation regressions).
+- **36 host/storage/HTTP tests** passed (3 new finite frequency/float-PCM failure and recovery cases).
+- Rust fmt, Clippy workspace/all targets with warnings denied and rebuilt core/render workers passed. No callback changes were made; the existing allocation/deallocation and transport tests stayed green.
+- Numeric regressions cover finite pitch overflow/underflow, finite-frequency phase overflow, linear-gain overflow, f32 track/master overflow, non-finite direct WAV input, preserved finite clipping, ignored/empty paths, half-frame rounding, scratch reset, exact frame cap and typed reservation failure.
+- HTTP regressions verify valid finite snapshots followed by 422 `AudioError`, no failed WAV files or `renders` rows, preserved exported state and undo recovery. Extreme finite float WAV import exercises the PCM region path rather than only synthesized notes.
+- Focused Oracle design and final implementation checks found no blocking deviations within the stated numeric/render-budget scope.
+- Independent HTTP QA confirmed frequency failure before and after service restart, unchanged cache/HEAD, undo recovery to non-silent 13,165,760-byte WAVs, a successful exact 180-second/48-kHz render of 34,560,044 bytes and a host-side 413 `ResourceLimit` above that duration.
+
+Before/after WAV SHA-256 comparison on the current Linux build target:
+
+| Fixture | Bytes | SHA-256, identical before and after |
+|---|---:|---|
+| Fractional synth | 186604 | `39ad714d718aae04192d302d9a570d2ab874f33eb7154735dc37f08e158d3a84` |
+| Cropped synth | 93324 | `5743c3867c6bd672baa782bf6f75551215d98bedb6750a960b5422c2d5f4167f` |
+| Pitch-independent kick | 186604 | `00cf63b64a0b5e3924e8a199e0bb66ea4ead2d14bdd6b1464fde2e9c1911a4c0` |
+| Resampled stereo | 186604 | `2b68f4240ca16e0a3611353c97074e87a5ba2db97b518d149c3dca80f60af3a1` |
+
+These fixtures use 48 kHz stereo, tempo 123.5, track gain -3.25 dB, pan 0.3 and cutoff 4321 Hz. The normal tone is pitch 60.25/velocity 0.8, start 0.25 beat, duration 1 beat in a 2-beat snapshot. The crop case uses a 1-beat snapshot with nominal 3-beat note duration. The kick case uses the normal timing with finite maximum pitch. Stereo PCM uses 441 stereo frames at 44.1 kHz (`samples[i] = sin(i * 0.12) * 0.5`), region start 0.25/duration 0.5 beat, gain 3 dB and source offset 0.001 s. These are current-target differential evidence, not cross-platform libm bit-equivalence promises.
+
+Manual QA used disposable stores and actual HTTP/render workers; artifacts were removed. Client/UI files were unchanged; their prior tests/build and browser checks were not rerun. No native-feature, physical-device or Windows qualification was performed. Rust LSP is unavailable, so compiler/Clippy supplied static checks. The output frame cap is not a total-process-memory/CPU guarantee; assets, input JSON and host buffers remain additional costs. See [audio boundaries](audio.md#numeric-and-output-memory-boundaries).
+
+## Previous follow-up: final effective-note validation
+
+- **122 Rust tests** passed, default features, including 14 new core/renderer regressions.
+- **33 host/storage/HTTP tests** passed, including duplicate source-ID and finite-operand overflow cases across dry-run, explanation, snapshot, render, export/import and undo.
+- Rust fmt, Clippy workspace/all-targets with warnings denied, and rebuilt core/render workers passed.
+- Core checks emitted per-instance notes after repetition/crop and the aggregated snapshot. Source/modifier collisions, slot replacement collisions, cross-instance encoded-ID collisions, final NaN/Infinity/velocity/timing violations, transient repair, proposal isolation and fractional pitch are covered. Standalone audio input rejects duplicate IDs and retains finite-value checks.
+- Independent HTTP usage exercised duplicate and overflow cases, each returning 422 `InvalidProject` for snapshot/render without replacing state. Both unresolved projects survived service/SQLite restart unchanged; undo recovered a non-silent 13,165,760-byte WAV in each case.
+
+The driver used disposable project data and actual HTTP/core/render workers; temporary artifacts were removed. Client/UI files were unchanged, so no fresh client-test/Vite/browser claim is made. No native-feature, Windows or physical-device qualification was run. Rust LSP is unavailable; compiler and Clippy supplied static checks. That follow-up validated note data; renderer arithmetic was addressed separately in the latest entry above.
+
+## Previous follow-up: explicit modifier order and access algebra, 2026-09-22
+
+- **108 Rust tests** passed (19 new graph/algebra/lifecycle regressions), default features.
+- **31 host/storage/HTTP tests** passed, including dry-run refusal of undeclared order, cyclic/unauthorized/stale apply rejection, audible-note order change and native export/import preservation.
+- **31 client tests** passed, including absent versus explicit-empty metadata, required edges and typed derived-access report parsing.
+- Rust fmt/Clippy (workspace/all targets, warnings denied), rebuilt workers, strict TypeScript and production Vite build passed. Existing upstream Zod annotation warnings remain non-blocking.
+- Oracle review found an AddNotes hard-conflict coverage gap within single modifiers and against local overrides. Two failing regressions reproduced it; an explicit-mode prepass over the full operation stream fixed it, and the final suite passed. No claim of a separate post-fix Oracle approval is made.
+- Independent HTTP QA observed legacy added-note pitch 60 versus explicit add-before-transpose pitch 72, non-mutating `ModifierOrderRequired` dry-run, HTTP 422 cyclic-graph rejection without HEAD replacement, and distinct non-silent 13,165,760-byte WAVs before/after ordering. Service/SQLite restart preserved the graph and produced a byte-identical post-change WAV.
+
+The driver used disposable project data and actual HTTP/core/render workers; artifacts were removed. LSPs are unavailable; compiler/Clippy/TypeScript supplied static checks. No browser/visual, native-feature, physical-device or Windows qualification was run. The [ordering contract](contract.md#explicit-modifier-dependency-ordering) documents opt-in legacy compatibility, graph limits, conservative resources, floating-point/provenance caveats and unsupported downgrade.
+
+## Previous follow-up: persisted modifier slot bindings, 2026-09-22
+
+- **89 Rust tests** passed, default features, including 12 new attachment/rebase/legacy/validation tests.
+- **30 host/storage/HTTP tests** passed, including slot binding export/import, dry-run, stale revision and agent rejection, explicit rebase, and effective replacement output.
+- **27 client tests** passed, including metadata preservation, nested-shape rejection, legacy absence and structured binding diagnostics.
+- Rust fmt, Clippy workspace/all-targets with warnings denied, worker rebuild, strict TypeScript and Vite production build passed. Upstream Zod annotation warnings remain non-blocking.
+- Focused Oracle design and final implementation checks found no blocking deviation from the Strong-only canonical-slot contract.
+- Independent HTTP driver observed stale binding persistence across restart, render rejection with 422 `RebaseConflict`, non-mutating rebase preview, stale apply rejection with 409, metadata-only revision 0 → 1 rebase, a non-silent 13,165,760-byte WAV, and preserved binding/replacement pitch 80 after a second database/service restart.
+
+QA used a disposable SQLite store and actual HTTP/Rust workers; temporary data was removed. LSPs are unavailable; compiler/Clippy/TypeScript supplied static checks. No browser/visual, native-feature, Windows or physical-device qualification was run. Old-core downgrade is unsupported because old readers can drop binding metadata. See [the binding contract](contract.md#persisted-strong-slot-modifier-bindings).
+
+## Previous follow-up: scoped dry-run reports, 2026-09-22
+
+- **77 Rust tests**, default features, passed (11 new dry-run/impact regressions).
+- **29 host/storage/HTTP tests** passed, including an authenticated agent request that reports local target failure and shared-source impact without changing exported state.
+- **23 client tests** passed, including optional-report preservation, legacy compatibility and rejection of unknown resolution states.
+- Rust formatting, Clippy workspace/all-targets with warnings denied, worker rebuild, strict TypeScript and Vite production build passed. Existing upstream Zod annotation warnings remain non-blocking.
+- A focused Oracle review found no blockers for the instance-centric/first-loop-note scope; it does not certify full render readiness or generic entity impact.
+- Independent HTTP usage: candidate source deletion reported missing `note-chorus-root` in chorus A and all three chorus dependency ranges (24–32, 56–64, 120–128); corrective dry-run reported conflict → clean; a healthy neighbor remained ready; stale-base dry-run returned `StaleRevision` without candidate reports. Exported canonical state was unchanged by all dry-runs, and the original snapshot remained usable before applying the deliberately conflicting test edit.
+
+Manual QA used an ephemeral loopback host, actual Rust workers, and a disposable SQLite store; artifacts were removed. No browser/visual, native-feature, physical-device or Windows qualification was run in this follow-up. LSPs are unavailable; compiler/Clippy/TypeScript served as static gates. [The contract](contract.md#scoped-dry-run-impact-and-note-resolution-reports) explicitly separates structural `executable` from scoped `noteResolution.ready`.
+
+## Previous follow-up audit: local note edits, 2026-09-22
+
+See [progress.md](progress.md) for the original-plan coverage matrix, completed note-identity work, and next priorities. Fresh verification: **66 Rust tests (default features), 28 host/storage/HTTP tests, 20 client tests**, Rust formatting, Clippy all-targets/default-features with warnings denied, rebuilt workers, and strict TypeScript/Vite build passed. Twelve Rust regressions exercise note patches and their boundaries; client tests cover schema contexts. The HTTP integration test covers source propagation, native project export/import, and blocked conflicting render.
+
+An independent disposable HTTP driver observed local pitches `[49,77,68,66]` versus peer `[61,77,68,66]`, a non-silent 13,165,760-byte WAV, HTTP 422 `RebaseConflict` for a removed local target, successful healthy-peer explanation, and undo plus SQLite close/reopen preserving the edits. This is rendered-signal verification, not physical speaker or musical-quality certification.
+
+LSPs remain unavailable; compiler/Clippy/TypeScript are the substitute gates. Physical devices, Windows, native-feature builds, browser/visual QA, package audits and license inventory were not rerun in this follow-up. Existing upstream Zod annotation warnings remain non-blocking.
+
+## Historical vertical-slice implementation results
 
 | Gate | Observed result |
 |---|---|
@@ -46,11 +131,11 @@ The native CLI was launched against a valid snapshot and reported the actual mis
 
 The current implementation is intentionally explicit about these unfinished acceptance items:
 
-1. **Complete composition graph:** nested components, a general FlowGroup/AbsoluteGroup model, full exposed-parameter bindings, stable selector ASTs on reusable modifier applications, modifier ordering DAGs, and a complete rebase UI are not all implemented. Current slots, proposal anchors, and rebase diagnostics are a smaller supported subset.
+1. **Complete composition graph:** nested components, general FlowGroup/AbsoluteGroup placement, full exposed-parameter bindings, arbitrary stable selector ASTs and complete rebase UI remain open. Strong canonical slot bindings, an opt-in current-operation modifier DAG, final emitted-note checks and bounded renderer numeric safeguards now exist, but do not complete the general composition graph.
 2. **Streaming and incremental compilation:** the host uses bounded decoded PCM and offline renders. It does not yet provide full-session disk streaming/read-ahead or the design's incremental resolver/graph compiler.
 3. **Unified native live editor output:** the CPAL adapter is independently implemented; the desktop client currently auditions canonical renders through Chromium. A native audio-control RPC path and device-selection UI remain to be integrated and qualified.
 4. **Full signal/device model:** the current built-in strips are not the complete typed signal graph, TrackFacade/Part/Lane split, general routing, automation, or device-capability model.
-5. **Complete editing surface:** the piano roll supports basic note insertion/removal and explicit source/local scope, not every move/split/trim/stretch/expression workflow in the design. Local note editing currently uses a pattern-level `ReplaceSlot` override: later source-note changes are masked by that replacement, rather than merged per note. Precise note-level override merging, detailed audio-region editing, and full keyboard/screen-reader note authoring remain open.
+5. **Complete editing surface:** the piano roll supports basic note insertion/removal and explicit source/local scope, not every move/split/trim/stretch/expression workflow in the design. New local edits now use normalized stable-ID `patchNotes`, preserving unrelated source changes; full-record local updates still override all properties of that note, and legacy `ReplaceSlot` remains a full-pattern replacement. Per-field merging, full rebase/impact UI, detailed audio-region editing, and full keyboard/screen-reader note authoring remain open.
 6. **General AI provider integration:** the supplied natural-language client is a limited deterministic local adapter. A real external model provider and richer query/tool orchestration are not enabled or claimed. Explicit typed proposal operations remain available through the API.
 7. **Production qualification:** long-session benchmarks, device buffer/sample-rate matrices, robust desktop packaging, exhaustive IME/high-DPI/accessibility testing, and power-loss testing on Windows remain release gates.
 

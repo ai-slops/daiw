@@ -1,6 +1,12 @@
 # Implementation roadmap
 
+The [original design baseline](design-baseline.md) is the target; [progress.md](progress.md) maps it to current code and outstanding gates. Stage 0 remains partial and stage 1 is not signed off.
+
+Completed: identity-based instance note patches, scoped dry-run note-target/impact reports, Strong-only slot bindings with explicit rebase, current-operation read/write algebra with an opt-in ordering DAG, final emitted-note checks, renderer numeric guards with bounded output allocation, versioned native exchange, and bounded note selection. Legacy ordering is preserved; invalid numeric output is rejected rather than sanitized. Next: general selector/application policies and full impact, nested composition/time, then incremental compilation/streaming and native-device qualification. Older cores must not save bound or explicitly ordered projects by stripping compatibility metadata. Basic streaming and tempo/meter requirements remain stage-0/1 obligations even where their advanced extensions are grouped below under stage 2.
+
 ## Stage 0: Headless domain foundation
+
+Follow-up completed: versioned native exchange/required-feature rejection, UI file import, and a bounded nonrecursive SelectionHandle subset with source/local transpose and velocity transforms. Next work is broader selector/application policies, tempo/meter maps and nested composition, followed by incremental compilation/streaming. Storage hardening still includes decoded-cache authentication, portable media archives and explicit migrations. See [the current exchange contract](native-exchange.md); do not downgrade by stripping the envelope or feature metadata.
 
 The baseline is a deterministic shared-chorus fixture, typed commands, source versus local edits, explicit modifier conflict handling, provenance, dry-run, proposals, revision checks, and a headless CLI. Regression scenarios must cover propagation, conflicting slot replacement, target drift, stable save/load results, and partial approval dependencies.
 
