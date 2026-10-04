@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/core", "crates/audio"]
+members = ["crates/core", "crates/audio", "crates/timing"]
 resolver = "2"
 
 [workspace.package]
@@ -12,6 +12,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["float_roundtrip"] }
 thiserror = "2"
 blake3 = { version = "1", features = ["pure"] }
+daiw-timing = { path = "crates/timing" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

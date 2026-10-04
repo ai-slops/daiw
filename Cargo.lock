@@ -235,6 +235,7 @@ name = "daiw-audio"
 version = "0.1.0"
 dependencies = [
  "cpal",
+ "daiw-timing",
  "rtrb",
  "serde",
  "serde_json",
@@ -248,10 +249,20 @@ name = "daiw-core"
 version = "0.1.0"
 dependencies = [
  "blake3",
+ "daiw-timing",
  "serde",
  "serde_json",
  "thiserror 2.0.20",
  "uuid",
+]
+
+[[package]]
+name = "daiw-timing"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
 ]
 
 [[package]]
