@@ -2,7 +2,16 @@
 
 This file records evidence, not aspirations. The supplied design remains the product target; the current repository must not be described as having passed every stage-1 acceptance condition.
 
-## Latest follow-up: native exchange and bounded selection (2026-10-03)
+## Latest follow-up: timing maps (2026-10-04)
+
+- **176 Rust**, **49 host/API**, **57 client tests** passed; strict TypeScript/Vite build, Rust fmt and Clippy workspace/all-targets/all-features with warnings denied passed. Existing Zod annotation warnings remain non-blocking.
+- Regression coverage includes step/ramp integration and inversion, invalid public conversion inputs, exact meter boundaries, cross-runtime large-tick acceptance, native feature/hash compatibility, absolute mapped frame placement, and scalar waveform compatibility.
+- Integration review found and fixed JS/Rust tick tolerance and meter arithmetic divergence, client finite-pitch schema mismatch, truncated imported source tails, and looped seek scheduling mismatch. The 48,019-frame import regression verifies the final source frame survives rendering.
+- An independent live HTTP driver dry-ran as agent, rejected agent apply, applied both maps as human, rejected an off-bar meter change, exported both required native features, imported, restarted the service and reopened identical state. Rendered WAV contained exactly **2,075,699 frames / 8,302,840 bytes**, matching independently integrated expected duration, with nonzero audio.
+- Real Chromium QA exercised map editing, active 5/4 position `003 / 01 / 000`, four-bar looping, playback start/pause and constant resets. Lead independently exercised cancel/reopen and actual tempo/meter saves. Lifecycle QA covered disabled busy controls, committed-revision confirmation and inline stale-error presentation; its error-response case used browser interception. Independent visual reviews passed responsive and lifecycle captures.
+- Evidence is in `/tmp/opencode/daiw-timing-evidence/` and `/tmp/opencode/daiw-timing-final/` (ephemeral container artifacts). Rust/TS diagnostics passed; CSS LSP remains unavailable, with build/browser checks used instead. No physical-device, Windows or long-session certification is claimed.
+
+## Native exchange and bounded selection (2026-10-03)
 
 - **159 Rust tests**, **41 host/storage/HTTP tests**, and **39 client tests** passed. Rust fmt, Clippy workspace/all targets with warnings denied, rebuilt workers and TypeScript/Vite production build passed. Upstream Zod annotation warnings remain non-blocking.
 - Native tests cover legacy/envelope import, unknown versions/features/semantic fields, canonical hash integrity, signed zero, portable integers and finite-float round trips. Selector tests cover deterministic bounds, onset membership, source/local scope, project/revision binding and human-only apply.
