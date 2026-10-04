@@ -1,3 +1,6 @@
+use crate::fixture_values::{
+    FixtureExpression, FixtureIdentity, FixtureRoute, FixtureTiming, FixtureTrackStyle,
+};
 use crate::ids::{DefinitionId, InstanceId, NoteId, ProjectId, Revision, TrackId};
 use crate::music::{Definition, Instance, Instrument, Note, Track};
 use crate::project::Project;
@@ -106,51 +109,6 @@ fn tick(beats: f64) -> Tick {
     Tick::from_ticks((beats * 960.0).round() as i64)
 }
 
-struct FixtureIdentity<'a> {
-    id: &'a str,
-    name: &'a str,
-}
-impl<'a> FixtureIdentity<'a> {
-    const fn new(id: &'a str, name: &'a str) -> Self {
-        Self { id, name }
-    }
-}
-
-struct FixtureTrackStyle<'a> {
-    role: &'a str,
-    color: &'a str,
-    instrument: Instrument,
-}
-impl<'a> FixtureTrackStyle<'a> {
-    const fn new(role: &'a str, color: &'a str, instrument: Instrument) -> Self {
-        Self {
-            role,
-            color,
-            instrument,
-        }
-    }
-}
-
-struct FixtureRoute<'a> {
-    definition: &'a str,
-    track: &'a str,
-}
-impl<'a> FixtureRoute<'a> {
-    const fn new(definition: &'a str, track: &'a str) -> Self {
-        Self { definition, track }
-    }
-}
-
-struct FixtureTiming {
-    start: f64,
-    length: f64,
-}
-impl FixtureTiming {
-    const fn new(start: f64, length: f64) -> Self {
-        Self { start, length }
-    }
-}
-
 fn track(identity: FixtureIdentity<'_>, style: FixtureTrackStyle<'_>) -> Track {
     Track {
         id: TrackId::from(identity.id),
@@ -225,16 +183,6 @@ fn definition(identity: FixtureIdentity<'_>, length: f64, pitches: &[(f64, f64)]
     }
 }
 
-struct FixtureExpression {
-    pitch: f64,
-    velocity: f64,
-}
-impl FixtureExpression {
-    const fn new(pitch: f64, velocity: f64) -> Self {
-        Self { pitch, velocity }
-    }
-}
-
 fn note(id: &str, timing: FixtureTiming, expression: FixtureExpression) -> Note {
     Note {
         id: NoteId::from(id),
@@ -259,5 +207,7 @@ fn instance(
         length: tick(timing.length),
         modifiers: Vec::new(),
         overrides: Vec::new(),
+        modifier_bindings: BTreeMap::new(),
+        modifier_ordering: None,
     }
 }

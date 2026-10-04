@@ -39,6 +39,7 @@ pub const fn operation_description(operation: &Operation) -> &'static str {
         Operation::Gain { .. } => "Adjust gain",
         Operation::AddNotes { .. } => "Add notes",
         Operation::ReplaceSlot { .. } => "Replace note slot",
+        Operation::PatchNotes(_) => "Edit individual notes",
         Operation::SetParameter { .. } => "Set instrument parameter",
     }
 }

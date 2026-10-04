@@ -1,6 +1,7 @@
 use crate::error::CoreError;
 use crate::ids::{HunkId, ProposalId};
 use crate::music::Operation;
+use crate::operation_validation::validate_reusable_operations;
 use crate::project::Project;
 use crate::proposal_adapter::{operation_description, parse_request};
 use crate::proposal_model::{
@@ -10,12 +11,11 @@ use crate::proposal_model::{
 use crate::proposal_rebase::assess;
 use crate::protocol::Principal;
 use crate::revision::{advance, musical_fingerprint, require_revision};
-use crate::validation::{validate_operations, validate_project};
+use crate::validation::validate_project;
 use std::collections::BTreeSet;
 
 pub fn create_proposal(project: &Project, params: ProposalParams) -> Result<Proposal, CoreError> {
     require_revision(project, &params.expected_revision)?;
-    let base_fingerprint = musical_fingerprint(project)?;
     let instance = project
         .instances
         .iter()
@@ -33,30 +33,18 @@ pub fn create_proposal(project: &Project, params: ProposalParams) -> Result<Prop
     if operations.is_empty() {
         return Err(CoreError::UnsupportedCapability(params.request));
     }
-    validate_operations(&operations)?;
+    validate_reusable_operations(&operations)?;
     let hunks = operations
         .into_iter()
         .enumerate()
         .map(|(index, operation)| -> Result<Hunk, CoreError> {
             let slot_binding = match &operation {
                 Operation::ReplaceSlot { slot, .. } => {
-                    let note_ids: Vec<_> = if slot == "notes" {
-                        definition
-                            .notes
-                            .iter()
-                            .map(|note| note.id.clone())
-                            .collect()
-                    } else {
-                        let bounds = definition.slots.get(slot).ok_or_else(|| {
+                    let selected = crate::modifier_binding::select_slot(definition, slot)
+                        .ok_or_else(|| {
                             CoreError::InvalidProject(format!("unknown note slot {slot}"))
                         })?;
-                        definition
-                            .notes
-                            .iter()
-                            .filter(|note| note.start >= bounds.start && note.start < bounds.end)
-                            .map(|note| note.id.clone())
-                            .collect()
-                    };
+                    let note_ids = selected.note_ids;
                     Some(SlotBinding {
                         slot: slot.clone(),
                         cardinality: note_ids.len(),
@@ -69,6 +57,7 @@ pub fn create_proposal(project: &Project, params: ProposalParams) -> Result<Prop
                 | Operation::Velocity { .. }
                 | Operation::Gain { .. }
                 | Operation::AddNotes { .. }
+                | Operation::PatchNotes(_)
                 | Operation::SetParameter { .. } => None,
             };
             Ok(Hunk {
@@ -99,7 +88,7 @@ pub fn create_proposal(project: &Project, params: ProposalParams) -> Result<Prop
                 .map(|note| note.id.clone())
                 .collect(),
         }),
-        base_fingerprint: Some(base_fingerprint),
+        base_fingerprint: Some(musical_fingerprint(project)?),
     })
 }
 

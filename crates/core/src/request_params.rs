@@ -14,7 +14,7 @@ pub struct CreateParams {
 
 #[derive(Deserialize)]
 pub struct ImportParams {
-    pub project: Project,
+    pub project: serde_json::Value,
 }
 
 #[derive(Deserialize)]

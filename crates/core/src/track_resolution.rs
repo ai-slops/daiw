@@ -29,6 +29,7 @@ pub fn derive_track(
             Operation::Transpose { .. }
             | Operation::Velocity { .. }
             | Operation::AddNotes { .. }
+            | Operation::PatchNotes(_)
             | Operation::ReplaceSlot { .. } => {}
         }
     }

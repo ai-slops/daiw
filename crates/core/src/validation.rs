@@ -1,12 +1,14 @@
 use crate::error::CoreError;
-use crate::music::{Note, Operation, Parameter};
+use crate::music::{Note, Operation};
+pub use crate::operation_validation::validate_operations;
+use crate::operation_validation::validate_reusable_operations;
 use crate::project::Project;
 use crate::time::MAX_TICKS;
 use std::collections::BTreeSet;
 use std::fmt::Display;
 
-const MIN_GAIN_DB: f64 = -96.0;
-const MAX_GAIN_DB: f64 = 24.0;
+pub(crate) const MIN_GAIN_DB: f64 = -96.0;
+pub(crate) const MAX_GAIN_DB: f64 = 24.0;
 
 pub fn validate_project(project: &Project) -> Result<(), CoreError> {
     if !(20.0..=400.0).contains(&project.tempo) {
@@ -66,6 +68,7 @@ pub fn validate_project(project: &Project) -> Result<(), CoreError> {
         }
     }
     for instance in &project.instances {
+        crate::binding_validation::validate(instance)?;
         if !definition_ids.contains(&instance.definition_id)
             || !track_ids.contains(&instance.track_id)
         {
@@ -96,21 +99,30 @@ pub fn validate_project(project: &Project) -> Result<(), CoreError> {
             )));
         }
         let mut combined = Vec::new();
-        for modifier_id in &instance.modifiers {
-            let modifier = project
-                .modifiers
-                .iter()
-                .find(|modifier| modifier.id == *modifier_id)
-                .ok_or_else(|| {
-                    CoreError::InvalidProject(format!("missing modifier {modifier_id}"))
-                })?;
+        for modifier in crate::modifier_plan::ordered(project, instance)? {
             combined.extend(modifier.operations.iter().cloned());
         }
         combined.extend(instance.overrides.iter().cloned());
         validate_operations(&combined)?;
+        let definition = project
+            .definitions
+            .iter()
+            .find(|definition| definition.id == instance.definition_id)
+            .ok_or_else(|| CoreError::NotFound(instance.definition_id.to_string()))?;
+        for operation in &instance.overrides {
+            if let Operation::PatchNotes(patch) = operation {
+                crate::note_patch::validate_bounds(&patch.updates, definition.length)?;
+                crate::note_patch::validate_bounds(&patch.added, definition.length)?;
+            }
+        }
     }
     for modifier in &project.modifiers {
-        validate_operations(&modifier.operations)?;
+        validate_reusable_operations(&modifier.operations)?;
+    }
+    for proposal in &project.proposals {
+        for hunk in &proposal.hunks {
+            validate_reusable_operations(std::slice::from_ref(&hunk.operation))?;
+        }
     }
     validate_media(project, &track_ids)?;
     Ok(())
@@ -200,56 +212,4 @@ fn unique_ids<'a, T: Display + Ord + 'a>(
         }
     }
     Ok(unique)
-}
-
-pub fn validate_operations(operations: &[Operation]) -> Result<(), CoreError> {
-    let mut slots = BTreeSet::new();
-    let mut parameters = BTreeSet::new();
-    for operation in operations {
-        match operation {
-            Operation::Transpose { semitones } if !semitones.is_finite() => invalid_operation(),
-            Operation::Velocity { factor } if !factor.is_finite() || *factor < 0.0 => {
-                invalid_operation()
-            }
-            Operation::Gain { db } if !(MIN_GAIN_DB..=MAX_GAIN_DB).contains(db) => {
-                invalid_operation()
-            }
-            Operation::AddNotes { notes } => validate_notes(notes),
-            Operation::ReplaceSlot { slot, notes } => {
-                if !slots.insert(slot) {
-                    return Err(CoreError::ModifierConflict(format!("slot:{slot}")));
-                }
-                validate_notes(notes)
-            }
-            Operation::SetParameter { parameter, value } => {
-                if !parameters.insert(parameter) {
-                    return Err(CoreError::ModifierConflict(
-                        parameter_name(parameter).to_owned(),
-                    ));
-                }
-                let valid = match parameter {
-                    Parameter::Cutoff => value.is_finite() && *value > 0.0,
-                    Parameter::Pan => (-1.0..=1.0).contains(value),
-                };
-                if valid { Ok(()) } else { invalid_operation() }
-            }
-            Operation::Transpose { .. } | Operation::Velocity { .. } | Operation::Gain { .. } => {
-                Ok(())
-            }
-        }?;
-    }
-    Ok(())
-}
-
-fn invalid_operation() -> Result<(), CoreError> {
-    Err(CoreError::InvalidProject(
-        "operation contains a non-finite or negative value".to_owned(),
-    ))
-}
-
-const fn parameter_name(parameter: &Parameter) -> &'static str {
-    match parameter {
-        Parameter::Cutoff => "parameter:cutoff",
-        Parameter::Pan => "parameter:pan",
-    }
 }

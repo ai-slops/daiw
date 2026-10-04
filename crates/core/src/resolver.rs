@@ -1,5 +1,6 @@
 use crate::error::CoreError;
-use crate::ids::ProposalId;
+use crate::ids::{InstanceId, ProposalId};
+use crate::music::Note;
 use crate::note_resolution::{EFFECTIVE_EVENT_LIMIT, NoteRequest, resolve_notes};
 use crate::project::{Project, Snapshot};
 use crate::proposal_model::ProposalStatus;
@@ -63,6 +64,7 @@ pub fn snapshot(
             event_budget,
         })?);
     }
+    crate::effective_validation::validate(&notes)?;
     notes.sort_by(|left, right| {
         left.start
             .cmp(&right.start)
@@ -88,6 +90,45 @@ pub fn snapshot(
         notes,
         regions: project.regions.clone(),
     })
+}
+
+pub(crate) fn editable_notes(project: &Project, id: &InstanceId) -> Result<Vec<Note>, CoreError> {
+    let instance = project
+        .instances
+        .iter()
+        .find(|instance| instance.id == *id)
+        .ok_or_else(|| CoreError::NotFound(id.to_string()))?;
+    let definition = project
+        .definitions
+        .iter()
+        .find(|definition| definition.id == instance.definition_id)
+        .ok_or_else(|| CoreError::NotFound(instance.definition_id.to_string()))?;
+    let mut pattern_instance = instance.clone();
+    pattern_instance.start = crate::time::Tick::default();
+    pattern_instance.length = definition.length.min(instance.length);
+    let operations = operations_for_instance(project, instance)?;
+    validate_operations(
+        &operations
+            .iter()
+            .map(|item| item.operation.clone())
+            .collect::<Vec<_>>(),
+    )?;
+    Ok(resolve_notes(NoteRequest {
+        definition,
+        instance: &pattern_instance,
+        track_id: &instance.track_id,
+        operations: &operations,
+        event_budget: EFFECTIVE_EVENT_LIMIT,
+    })?
+    .into_iter()
+    .map(|note| Note {
+        id: note.origin.note_id,
+        start: note.start,
+        duration: note.duration,
+        pitch: note.pitch,
+        velocity: note.velocity,
+    })
+    .collect())
 }
 
 fn with_preview(project: &Project, proposal_id: Option<&ProposalId>) -> Result<Project, CoreError> {
@@ -126,12 +167,16 @@ fn operations_for_instance(
     instance: &crate::music::Instance,
 ) -> Result<Vec<ResolvedOperation>, CoreError> {
     let mut operations = Vec::new();
-    for modifier_id in &instance.modifiers {
-        let modifier = project
-            .modifiers
-            .iter()
-            .find(|modifier| modifier.id == *modifier_id)
-            .ok_or_else(|| CoreError::NotFound(modifier_id.to_string()))?;
+    for modifier in crate::modifier_plan::ordered(project, instance)? {
+        let modifier_id = &modifier.id;
+        if let Some(binding) = instance.modifier_bindings.get(modifier_id) {
+            let definition = project
+                .definitions
+                .iter()
+                .find(|definition| definition.id == instance.definition_id)
+                .ok_or_else(|| CoreError::NotFound(instance.definition_id.to_string()))?;
+            crate::modifier_binding::check(binding, definition, modifier)?;
+        }
         operations.extend(
             modifier
                 .operations

@@ -66,7 +66,21 @@ pub enum Command {
         scope: EditScope,
         notes: Vec<Note>,
     },
+    TransformSelectedNotes {
+        selection: crate::note_selection::SelectionHandle,
+        transform: crate::selected_note_edit::NoteTransform,
+    },
     ApplyModifier {
+        instance_id: InstanceId,
+        modifier_id: ModifierId,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        ordering: Option<crate::ordering_graph::ModifierOrdering>,
+    },
+    SetModifierOrdering {
+        instance_id: InstanceId,
+        ordering: crate::ordering_graph::ModifierOrdering,
+    },
+    RebaseModifier {
         instance_id: InstanceId,
         modifier_id: ModifierId,
     },

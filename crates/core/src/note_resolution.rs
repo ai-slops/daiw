@@ -54,13 +54,15 @@ pub fn resolve_notes(request: NoteRequest<'_>) -> Result<Vec<EffectiveNote>, Cor
             },
         )?;
     }
-    repeat_pattern(RepeatRequest {
+    let notes = repeat_pattern(RepeatRequest {
         pattern: &pattern,
         definition: request.definition,
         instance: request.instance,
         track_id: request.track_id,
         event_budget: request.event_budget,
-    })
+    })?;
+    crate::effective_validation::validate(&notes)?;
+    Ok(notes)
 }
 
 fn apply_pattern_operation(
@@ -111,6 +113,22 @@ fn apply_pattern_operation(
             notes.extend(replacements.iter().cloned().map(|note| PatternNote {
                 note,
                 modifier_ids: applied.modifier_id.iter().cloned().cloned().collect(),
+            }));
+        }
+        Operation::PatchNotes(patch) => {
+            patch.validate_targets(notes.iter().map(|note| &note.note.id))?;
+            let removed: std::collections::BTreeSet<_> = patch.removed.iter().collect();
+            let updates: std::collections::BTreeMap<_, _> =
+                patch.updates.iter().map(|note| (&note.id, note)).collect();
+            notes.retain(|note| !removed.contains(&note.note.id));
+            for note in notes.iter_mut() {
+                if let Some(updated) = updates.get(&note.note.id) {
+                    note.note = (*updated).clone();
+                }
+            }
+            notes.extend(patch.added.iter().cloned().map(|note| PatternNote {
+                note,
+                modifier_ids: Vec::new(),
             }));
         }
         Operation::Gain { .. } | Operation::SetParameter { .. } => {}

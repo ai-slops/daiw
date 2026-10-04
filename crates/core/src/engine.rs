@@ -41,6 +41,15 @@ pub fn affected_instances(project: &Project, command: &Command) -> Vec<InstanceI
             instance_id,
             scope: EditScope::Source,
             ..
+        }
+        | Command::TransformSelectedNotes {
+            selection:
+                crate::note_selection::SelectionHandle {
+                    instance_id,
+                    scope: EditScope::Source,
+                    ..
+                },
+            ..
         } => project
             .instances
             .iter()
@@ -62,7 +71,18 @@ pub fn affected_instances(project: &Project, command: &Command) -> Vec<InstanceI
             scope: EditScope::Instance,
             ..
         }
+        | Command::TransformSelectedNotes {
+            selection:
+                crate::note_selection::SelectionHandle {
+                    instance_id,
+                    scope: EditScope::Instance,
+                    ..
+                },
+            ..
+        }
         | Command::ApplyModifier { instance_id, .. }
+        | Command::RebaseModifier { instance_id, .. }
+        | Command::SetModifierOrdering { instance_id, .. }
         | Command::RemoveModifier { instance_id, .. } => vec![instance_id.clone()],
         Command::SetTempo { .. }
         | Command::RenameProject { .. }

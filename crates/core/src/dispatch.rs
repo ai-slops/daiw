@@ -1,11 +1,11 @@
 use crate::command::ChangeRequest;
-use crate::engine::{affected_instances, apply_change, preview_change};
+use crate::engine::apply_change;
 use crate::error::CoreError;
 use crate::fixture::create_project;
 use crate::project::Project;
 use crate::proposal_model::{Acceptance, Rejection};
 use crate::proposals::{accept_proposal, create_proposal, reject_proposal};
-use crate::protocol::{Diagnostic, FailureResponse, Request, Response, Severity, SuccessResponse};
+use crate::protocol::{FailureResponse, Request, Response, SuccessResponse};
 use crate::request_params::{
     AcceptParams, ChangeParams, CreateParams, ExplainParams, ImportParams, RejectParams,
     RestoreParams, SnapshotParams,
@@ -53,14 +53,20 @@ fn execute(request: Request) -> Result<(Project, Value), CoreError> {
     }
     if request.method == "project.import" {
         let params: ImportParams = parse(request.params)?;
-        validate_project(&params.project)?;
-        let mut imported = params.project;
+        let (mut imported, source_version) = crate::native_format::import(params.project)?;
         imported.id = crate::ids::ProjectId::new_random();
         let project = advance(imported, "human", "Imported project")?;
-        return Ok((project.clone(), json!({ "project": project })));
+        return Ok((
+            project.clone(),
+            json!({ "project": project, "sourceFormatVersion": source_version }),
+        ));
     }
     let project = request.state.ok_or(CoreError::MissingState)?;
     match request.method.as_str() {
+        "project.export" => {
+            let document = crate::native_format::export(&project)?;
+            Ok((project, document))
+        }
         "project.get" => Ok((project.clone(), json!({ "project": project }))),
         "project.history" => {
             let hash = canonical_hash(&project)?;
@@ -84,6 +90,10 @@ fn execute(request: Request) -> Result<(Project, Value), CoreError> {
             let params: SnapshotParams = parse(request.params)?;
             let rendered = snapshot(&project, params.proposal_id.as_ref())?;
             Ok((project, json!({ "snapshot": rendered })))
+        }
+        "project.queryNotes" => {
+            let selection = crate::note_selection::query_notes(&project, parse(request.params)?)?;
+            Ok((project, json!({ "selection": selection })))
         }
         "project.explain" => explain(project, parse(request.params)?),
         "change.dryRun" => dry_run(project, parse(request.params)?),
@@ -153,23 +163,8 @@ fn execute(request: Request) -> Result<(Project, Value), CoreError> {
 }
 
 fn dry_run(project: Project, params: ChangeParams) -> Result<(Project, Value), CoreError> {
-    let affected = affected_instances(&project, &params.command);
-    let command_value = serde_json::to_value(&params.command)
+    let result = serde_json::to_value(crate::dry_run::inspect(&project, params))
         .map_err(|error| CoreError::Serialization(error.to_string()))?;
-    let result = match preview_change(&project, &params.expected_revision, params.command) {
-        Ok(_) => {
-            json!({ "executable": true, "affectedInstances": affected, "hunks": [{ "command": command_value }], "diagnostics": [] })
-        }
-        Err(error) => {
-            let diagnostic = Diagnostic {
-                code: error.code().to_owned(),
-                severity: Severity::Blocking,
-                message: error.to_string(),
-                entity_id: None,
-            };
-            json!({ "executable": false, "affectedInstances": affected, "hunks": [], "diagnostics": [diagnostic] })
-        }
-    };
     Ok((project, result))
 }
 
@@ -189,21 +184,10 @@ fn explain(project: Project, params: ExplainParams) -> Result<(Project, Value), 
         .iter()
         .filter_map(|id| project.modifiers.iter().find(|modifier| modifier.id == *id))
         .collect();
-    let effective_notes: Vec<_> = snapshot(&project, None)?
-        .notes
-        .into_iter()
-        .filter(|note| {
-            note.instance_id == instance.id && note.start < instance.start + definition.length
-        })
-        .map(|note| crate::music::Note {
-            id: note.origin.note_id,
-            start: crate::time::Tick::from_ticks(note.start.ticks() - instance.start.ticks()),
-            duration: note.duration,
-            pitch: note.pitch,
-            velocity: note.velocity,
-        })
-        .collect();
-    let result = json!({ "revision": project.revision, "instanceId": instance.id, "instance": instance, "definition": definition, "effectiveNotes": effective_notes, "modifiers": modifiers, "overrides": instance.overrides });
+    let effective_notes = crate::resolver::editable_notes(&project, &instance.id)?;
+    let unbound = crate::binding_validation::unbound_modifier_ids(&project, instance);
+    let modifier_plan = crate::modifier_plan::explain(&project, instance)?;
+    let result = json!({ "revision": project.revision, "instanceId": instance.id, "instance": instance, "definition": definition, "effectiveNotes": effective_notes, "modifiers": modifiers, "overrides": instance.overrides, "unboundModifierIds": unbound, "modifierPlan": modifier_plan });
     Ok((project, result))
 }
 

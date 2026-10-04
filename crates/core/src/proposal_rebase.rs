@@ -94,27 +94,20 @@ fn operation_conflict<'a>(
     existing_operations: &[Operation],
 ) -> Option<(&'a str, &'a str)> {
     match operation {
+        Operation::PatchNotes(_) => {
+            return Some((
+                "UnsupportedCapability",
+                "note patches are instance-local edits",
+            ));
+        }
         Operation::ReplaceSlot { slot, .. } => {
             let Some(binding) = slot_binding else {
                 return Some(("AmbiguousTarget", "slot replacement has no binding"));
             };
-            let current_ids: Vec<_> = if slot == "notes" {
-                definition
-                    .notes
-                    .iter()
-                    .map(|note| note.id.clone())
-                    .collect()
-            } else {
-                let Some(bounds) = definition.slots.get(slot) else {
-                    return Some(("TargetsChanged", "bound note slot was removed"));
-                };
-                definition
-                    .notes
-                    .iter()
-                    .filter(|note| note.start >= bounds.start && note.start < bounds.end)
-                    .map(|note| note.id.clone())
-                    .collect()
+            let Some(selected) = crate::modifier_binding::select_slot(definition, slot) else {
+                return Some(("TargetsChanged", "bound note slot was removed"));
             };
+            let current_ids = selected.note_ids;
             if binding.slot != *slot
                 || binding.note_ids != current_ids
                 || binding.cardinality != current_ids.len()

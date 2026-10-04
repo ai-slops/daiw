@@ -74,6 +74,7 @@ pub enum Operation {
     Gain { db: f64 },
     AddNotes { notes: Vec<Note> },
     ReplaceSlot { slot: String, notes: Vec<Note> },
+    PatchNotes(crate::note_patch::NotePatch),
     SetParameter { parameter: Parameter, value: f64 },
 }
 
@@ -96,6 +97,10 @@ pub struct Instance {
     pub length: Tick,
     pub modifiers: Vec<ModifierId>,
     pub overrides: Vec<Operation>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub modifier_bindings: BTreeMap<ModifierId, crate::modifier_binding::ModifierBinding>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub modifier_ordering: Option<crate::ordering_graph::ModifierOrdering>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]

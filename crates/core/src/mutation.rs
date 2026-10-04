@@ -1,7 +1,7 @@
 use crate::command::Command;
 use crate::error::CoreError;
 use crate::ids::{DefinitionId, InstanceId, ModifierId, TrackId};
-use crate::instance_mutation::{apply_modifier, edit_notes, find_instance_mut};
+use crate::instance_mutation::{apply_modifier, edit_notes, find_instance_mut, rebase_modifier};
 use crate::music::{Definition, Instance, Modifier, Track};
 use crate::project::Project;
 use crate::validation::{validate_notes, validate_operations};
@@ -109,6 +109,8 @@ pub fn apply_command(project: &mut Project, command: Command) -> Result<String, 
                 length: definition.length,
                 modifiers: Vec::new(),
                 overrides: Vec::new(),
+                modifier_bindings: std::collections::BTreeMap::new(),
+                modifier_ordering: None,
             });
             Ok("Instantiated definition".to_owned())
         }
@@ -151,16 +153,55 @@ pub fn apply_command(project: &mut Project, command: Command) -> Result<String, 
             scope,
             notes,
         } => edit_notes(project, instance_id, scope, notes),
+        Command::TransformSelectedNotes {
+            selection,
+            transform,
+        } => crate::selected_note_edit::apply(project, selection, transform),
         Command::ApplyModifier {
             instance_id,
             modifier_id,
-        } => apply_modifier(project, instance_id, modifier_id),
+            ordering,
+        } => {
+            if ordering.is_some()
+                && find_instance_mut(project, &instance_id)?
+                    .modifiers
+                    .contains(&modifier_id)
+            {
+                return Err(CoreError::InvalidParams(
+                    "use setModifierOrdering for an existing attachment".into(),
+                ));
+            }
+            let message = apply_modifier(project, instance_id.clone(), modifier_id)?;
+            if let Some(mut ordering) = ordering {
+                ordering.edges.sort();
+                find_instance_mut(project, &instance_id)?.modifier_ordering = Some(ordering);
+            }
+            Ok(message)
+        }
+        Command::SetModifierOrdering {
+            instance_id,
+            mut ordering,
+        } => {
+            ordering.edges.sort();
+            find_instance_mut(project, &instance_id)?.modifier_ordering = Some(ordering);
+            Ok("Set modifier dependency order".into())
+        }
+        Command::RebaseModifier {
+            instance_id,
+            modifier_id,
+        } => rebase_modifier(project, instance_id, modifier_id),
         Command::RemoveModifier {
             instance_id,
             modifier_id,
         } => {
             let instance = find_instance_mut(project, &instance_id)?;
             instance.modifiers.retain(|id| *id != modifier_id);
+            instance.modifier_bindings.remove(&modifier_id);
+            if let Some(ordering) = &mut instance.modifier_ordering {
+                ordering
+                    .edges
+                    .retain(|edge| edge.before != modifier_id && edge.after != modifier_id);
+            }
             Ok("Removed modifier".to_owned())
         }
         Command::CreateModifier { name, operations } => {
