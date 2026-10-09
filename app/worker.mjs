@@ -8,6 +8,7 @@ const responseSchema = z.discriminatedUnion('ok', [
   z.object({ id: z.string(), ok: z.literal(true), state: z.looseObject({ id: z.string(), name: z.string(), revision: z.string() }), result: z.unknown() }),
   z.object({ id: z.string(), ok: z.literal(false), error: z.object({ code: z.string(), message: z.string() }) }),
 ]);
+const TERMINATION_GRACE_MS = 500;
 
 export class CoreWorker {
   #child;
@@ -65,33 +66,44 @@ export class CoreWorker {
   }
 }
 
-export function runBinary({ binary, args, input, limit = 128 * 1024 * 1024, resourceLimitExitCode = undefined }) {
+export function runBinary({ binary, args, input, limit = 128 * 1024 * 1024, resourceLimitExitCode = undefined, infrastructureExitCode = undefined, signal = undefined }) {
   return new Promise((resolve, reject) => {
     const child = spawn(binary, args, { stdio: ['pipe', 'pipe', 'pipe'] });
     const chunks = [];
     let bytes = 0;
     let stderr = '';
-    let settled = false;
-    const finish = (error, output) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      if (error) { child.kill(); reject(error); } else resolve(output);
+    let terminalError;
+    let closed = false;
+    let forceTimer;
+    const terminate = (error) => {
+      if (terminalError || closed) return;
+      terminalError = error;
+      child.kill('SIGTERM');
+      forceTimer = setTimeout(() => { if (!closed) child.kill('SIGKILL'); }, TERMINATION_GRACE_MS);
     };
-    const timer = setTimeout(() => finish(new ServiceError('RenderTimeout', 'Audio processing exceeded its time limit.', 504)), 120000);
+    const abort = () => terminate(new ServiceError('RequestAborted', 'Audio processing was cancelled.', 499));
+    signal?.addEventListener('abort', abort, { once: true });
+    const timer = setTimeout(() => terminate(new ServiceError('RenderTimeout', 'Audio processing exceeded its time limit.', 504)), 120000);
     child.stdout.on('data', (chunk) => {
       bytes += chunk.length;
-      if (bytes > limit) finish(new ServiceError('ResourceLimit', 'Audio output exceeds the configured limit.', 413));
+      if (bytes > limit) terminate(new ServiceError('ResourceLimit', 'Audio output exceeds the configured limit.', 413));
       else chunks.push(chunk);
     });
     child.stderr.on('data', (chunk) => { stderr = `${stderr}${chunk}`.slice(-4096); });
-    child.on('error', (error) => finish(error));
+    child.on('error', (error) => terminate(error));
     child.on('close', (code) => {
-      if (code === 0) finish(null, Buffer.concat(chunks));
-      else if (code === resourceLimitExitCode) finish(new ServiceError('ResourceLimit', 'Audio processing exceeded a configured resource limit.', 413));
-      else finish(new ServiceError('AudioError', stderr.trim() || 'Audio processing failed.', 422));
+      closed = true;
+      clearTimeout(timer);
+      clearTimeout(forceTimer);
+      signal?.removeEventListener('abort', abort);
+      if (terminalError) reject(terminalError);
+      else if (code === 0) resolve(Buffer.concat(chunks));
+      else if (code === resourceLimitExitCode) reject(new ServiceError('ResourceLimit', 'Audio processing exceeded a configured resource limit.', 413));
+      else if (code === infrastructureExitCode) reject(new ServiceError('RenderInfrastructure', stderr.trim() || 'Audio rendering infrastructure failed.', 500));
+      else reject(new ServiceError('AudioError', stderr.trim() || 'Audio processing failed.', 422));
     });
-    child.stdin.on('error', (error) => finish(error));
+    child.stdin.on('error', (error) => terminate(error));
     child.stdin.end(input);
+    if (signal?.aborted) abort();
   });
 }
