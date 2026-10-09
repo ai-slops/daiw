@@ -1,0 +1,46 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { createServer } from 'node:http';
+import { once } from 'node:events';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { ProjectService } from '../app/service.mjs';
+import { MediaStore } from '../app/media.mjs';
+import { createHandler } from '../app/http.mjs';
+
+test('a valid WAV just over 180 seconds returns typed HTTP 413', async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'daiw-duration-limit-'));
+  const service = new ProjectService({ directory, binary: resolve('target/debug/daiw-core') });
+  const media = new MediaStore({ directory, service, binary: resolve('target/debug/daiw-render') });
+  await media.initialize();
+  const server = createServer(createHandler({ service, media, staticRoot: directory }));
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(async () => {
+    server.closeAllConnections();
+    await new Promise((done) => server.close(done));
+    await service.close();
+    await rm(directory, { recursive: true });
+  });
+  const address = server.address();
+  assert.ok(address && typeof address === 'object');
+  const base = `http://127.0.0.1:${address.port}`;
+  const { token } = await (await fetch(`${base}/api/session`)).json();
+  const rpc = async (request) => (await fetch(`${base}/api/rpc`, { method: 'POST', headers: { 'content-type': 'application/json', 'X-DAIW-Session': token }, body: JSON.stringify(request) })).json();
+  let { state } = await rpc({ method: 'project.create', params: { fixture: false } });
+  ({ state } = await rpc({ projectId: state.id, method: 'change.apply', params: { expectedRevision: state.revision, command: { type: 'addTrack', name: 'Audio', instrument: 'sample', color: '#fff', role: 'audio' } } }));
+  const frames = 8_000 * 180 + 1;
+  const wav = Buffer.alloc(44 + frames, 128);
+  wav.write('RIFF', 0); wav.writeUInt32LE(wav.length - 8, 4); wav.write('WAVEfmt ', 8);
+  wav.writeUInt32LE(16, 16); wav.writeUInt16LE(1, 20); wav.writeUInt16LE(1, 22);
+  wav.writeUInt32LE(8000, 24); wav.writeUInt32LE(8000, 28); wav.writeUInt16LE(1, 32); wav.writeUInt16LE(8, 34);
+  wav.write('data', 36); wav.writeUInt32LE(frames, 40);
+  const form = new FormData();
+  form.set('file', new Blob([wav], { type: 'audio/wav' }), 'over-duration.wav');
+  form.set('trackId', state.tracks[0].id); form.set('expectedRevision', state.revision); form.set('start', '0');
+  const response = await fetch(`${base}/api/projects/${state.id}/import-audio`, { method: 'POST', headers: { 'X-DAIW-Session': token }, body: form });
+  const body = await response.json();
+  assert.equal(response.status, 413, JSON.stringify(body));
+  assert.equal(body.error.code, 'ResourceLimit');
+});

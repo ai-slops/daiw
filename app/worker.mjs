@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { ServiceError } from './errors.mjs';
 
 const responseSchema = z.discriminatedUnion('ok', [
-  z.object({ id: z.string(), ok: z.literal(true), state: z.object({ id: z.string(), name: z.string(), revision: z.string() }).passthrough(), result: z.unknown() }),
+  z.object({ id: z.string(), ok: z.literal(true), state: z.looseObject({ id: z.string(), name: z.string(), revision: z.string() }), result: z.unknown() }),
   z.object({ id: z.string(), ok: z.literal(false), error: z.object({ code: z.string(), message: z.string() }) }),
 ]);
 
@@ -65,7 +65,7 @@ export class CoreWorker {
   }
 }
 
-export function runBinary(binary, args, input, limit = 128 * 1024 * 1024) {
+export function runBinary({ binary, args, input, limit = 128 * 1024 * 1024, resourceLimitExitCode = undefined }) {
   return new Promise((resolve, reject) => {
     const child = spawn(binary, args, { stdio: ['pipe', 'pipe', 'pipe'] });
     const chunks = [];
@@ -86,7 +86,11 @@ export function runBinary(binary, args, input, limit = 128 * 1024 * 1024) {
     });
     child.stderr.on('data', (chunk) => { stderr = `${stderr}${chunk}`.slice(-4096); });
     child.on('error', (error) => finish(error));
-    child.on('close', (code) => finish(code === 0 ? null : new ServiceError('AudioError', stderr.trim() || 'Audio processing failed.', 422), Buffer.concat(chunks)));
+    child.on('close', (code) => {
+      if (code === 0) finish(null, Buffer.concat(chunks));
+      else if (code === resourceLimitExitCode) finish(new ServiceError('ResourceLimit', 'Audio processing exceeded a configured resource limit.', 413));
+      else finish(new ServiceError('AudioError', stderr.trim() || 'Audio processing failed.', 422));
+    });
     child.stdin.on('error', (error) => finish(error));
     child.stdin.end(input);
   });
