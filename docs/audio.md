@@ -37,7 +37,7 @@ Input/data validation and DSP validation are separate. The renderer now rejects 
 - Source resampling uses checked integer arithmetic. Representable offsets past the source remain ordinary source-end silence; unrepresentable offsets fail. Region multiplication, filter output and master accumulation cannot publish non-finite samples.
 - Finite linear-gain underflow to zero remains silence. Overflowing linear or pan gains fail explicitly. Finite internal headroom above unity is allowed; the WAV encoder clips it as before.
 - `MAX_RENDER_FRAMES` is **8,640,000 stereo frames** for the Rust renderer, checked before allocating output buffers. This is 180 seconds at 48 kHz or 90 seconds at 96 kHz. The existing HTTP endpoint remains fixed at 48 kHz and separately limits duration to 180 seconds.
-- Master and a reused scratch track buffer are allocated fallibly. At the cap they request about **138.24 MB total** for two stereo `f32` buffers; later master-plus-WAV storage is about 103.68 MB. These numbers exclude assets, input JSON, host/cache buffers and allocator overhead, and are not a total process-memory or CPU guarantee.
+- The production file-output path now uses 4,096-frame master/track blocks with persistent per-track filter state, rather than full-duration master/track buffers. Legacy resident APIs explicitly collect the final samples and `wav()` still returns a full buffer. See [output-streaming.md](output-streaming.md) for exact compatibility, scratch-space bounds and limitations; these are not total process-memory or CPU guarantees.
 - Rust reports `InvalidFrameCount`, `RenderTooLarge`, `Allocation`, or `InvalidValue` with fields such as `frequency`, `phase`, `linearGain`, `panGain`, and `samples`. `WavTooLarge` continues to protect WAV header/payload arithmetic. Allocation failures are not mislabeled as numeric failures.
 
 All checks run in offline/control-thread rendering or encoding, not in the audio callback. A successful render returns finite samples, and a failed render does not return partial audio. Restart the host after deploying a new renderer so `MediaStore.initialize` refreshes its binary fingerprint; render cache keys include that fingerprint. The host writes a WAV/cache record only after successful worker completion.
@@ -50,7 +50,9 @@ cargo run -p daiw-audio --bin daiw-render -- --decode /absolute/path/to/upload.f
 
 The JSON result is `{frames,sampleRate,channels,samples}` with interleaved `f32` PCM. Decoding is capped at 4,000,000 interleaved samples per source. The decoder checks each decoded packet's frame/channel capacity before allocating its conversion buffer or extending accumulated PCM and returns typed `ResourceLimit` on hostile compressed expansion.
 
-The HTTP host now uses `--decode-file` and `--render-file-backed` instead. These stream source PCM through checksummed managed binary files and 4,096-source-frame reads; they do not transfer full PCM arrays through JSON. See [offline-streaming.md](offline-streaming.md) for the binary format, new resource limits, integrity recovery and retained resident-output limitations.
+The HTTP host now uses `--decode-file` and managed file-backed sources instead of decoded PCM JSON. Sources pass through checksummed binary files and 4,096-source-frame reads. See [offline-streaming.md](offline-streaming.md) for the binary format, resource limits and integrity recovery.
+
+For output, the host now selects `--render-to-file` rather than the retained stdout-compatible `--render-file-backed` mode. It verifies the completed WAV descriptor/file and streams HTTP from the same open handle. Block rendering keeps successful PCM bytes unchanged. See [output-streaming.md](output-streaming.md).
 
 ## Browser API
 
