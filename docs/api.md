@@ -23,6 +23,8 @@ Responses use `{id,ok:true,state,result}` or `{ok:false,error:{code,message}}`. 
 
 ## Editing and review
 
+Definition-owned child placements are available through `addDefinitionChild`, `setDefinitionChild`, `removeDefinitionChild` and `editDefinitionNotes`. `project.explain.compositionNotes` exposes pre-modifier nested provenance; source edits remain own-note-only. See [composition.md](composition.md) for wire shapes, bounds, dependency guards and UI behavior.
+
 Tempo/meter maps and `setTempoMap`, `setMeterMap`, `setMeter` are now supported alongside `setTempo`. Constant setters clear the corresponding map. See [timing.md](timing.md) for wire examples, validation, mapped render/seek semantics and the point-table editor.
 
 1. Query `project.get` or `project.explain`.

@@ -6,6 +6,8 @@ Native interchange uses a separate versioned envelope, not worker `state`. See [
 
 ## Domain wire types
 
+Optional `Definition.children`, nested note provenance and descendant revision closures are specified in [composition.md](composition.md). These require `nested-definitions-v1` in native documents. Empty children are omitted for flat-project compatibility.
+
 Optional `Project.tempoMap` and `Project.meterMap`, their setters, native feature requirements and snapshot behavior are specified in [the timing contract](timing.md). Omitted maps preserve constant timing; they are not silently inferred from scalar fields.
 
 `Project`: `{ id, name, revision, tempo, meter:[4,4], definitions:Definition[], instances:Instance[], tracks:Track[], modifiers:Modifier[], proposals:Proposal[], history:HistoryEntry[] }`.
