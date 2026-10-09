@@ -2,7 +2,17 @@
 
 This file records evidence, not aspirations. The supplied design remains the product target; the current repository must not be described as having passed every stage-1 acceptance condition.
 
-## Latest follow-up: offline file-backed sources (2026-10-09)
+## Latest follow-up: bounded WAV output and HTTP streaming (2026-10-09)
+
+- **276 Rust**, **87 host/API**, **71 client tests** passed. Rust fmt, all-feature workspace/all-target Clippy, worker rebuild and strict TypeScript/Vite build passed; relevant Rust/MJS diagnostics were clean. Existing Zod annotation warnings remain non-blocking.
+- A legacy pre-refactor multi-track/noise/filter/4096-boundary golden retains SHA-256 `2a5be862a67a18c711b59d12329955ccfa442d0e39780be5287f9acd8b7cc9aa`. Tests cover block-size parity, persistent filters, absolute voice/region offsets, fractional source rounding, zero/max output, existing-file refusal, numeric failure cleanup and descriptor stdout failure.
+- Independent review and integration checks led to fixes for frame-by-event traversal, source-cache thrashing, initial root containment, SIGTERM-resistant cancellation, late-handle disconnect, post-commit cleanup failure, transactional metadata invalidation and descriptor flushing. Request-owned jobs cancel; shared source regeneration continues while an aborted caller stops waiting. This deliberate boundary is tested with a paused decoder and peer request.
+- Manual HTTP verification streamed **13,165,760 bytes** in **202 observed chunks** and matched the compatibility resident renderer: SHA-256 `0bd7ad00b593aaa03604cb5355b3ca851aa6bf735a7f6d21fe245bc0d83875d2`. Warm cache and repaired same-length corrupted cache returned the same digest/ETag. Cancelling delivery left no render temporaries; the next download succeeded.
+- Sampled `/proc` high-water RSS for six-track silent file rendering was **5,408 KiB** at 4 seconds and **5,372 KiB** at 180 seconds. The long case wrote **34,560,044 bytes**, with only **178 descriptor bytes** on stdout. Sampling interval was 10 ms; these fixture measurements are not a universal peak-memory guarantee or CPU benchmark. Disposable data was removed.
+- Host coverage includes strict header/hash verification, same-handle delivery, backpressure, pre/post-header failures, infrastructure/resource status mapping, 2 GiB reservation, restart/orphan/temp recovery, SQLite rollback and handle cleanup. Some fault-injection tests use fixtures; manual streaming and parity checks use actual binaries.
+- No UI changed, so visual QA was not repeated. Browser audition remains resident and the three-minute policy remains. Long-session, real-time read-ahead, physical-device and Windows certification are not claimed.
+
+## Offline file-backed sources (2026-10-09)
 
 - **266 Rust**, **68 host/API**, **71 client tests** passed; worker rebuild, Rust fmt, all-feature workspace/all-target Clippy and TypeScript/Vite production build passed. Changed Rust/MJS diagnostics were clean. Existing Zod build annotation warnings remain non-blocking.
 - Rust coverage includes legacy/file-backed sample and WAV parity, source offsets, block boundaries, multichannel selection, resampling, malformed headers/length/checksums/nonfinite samples, strict descriptor fields, real core snapshot metadata compatibility, large decode and typed resource exits.
