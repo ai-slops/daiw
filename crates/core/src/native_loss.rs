@@ -15,7 +15,13 @@ pub fn check(raw: &Value, typed: &Value, path: &str) -> Result<(), NativeError> 
                     let empty_binding = key == "modifierBindings"
                         && value.as_object().is_some_and(|map| map.is_empty());
                     let empty_order = key == "modifierOrdering" && value.is_null();
-                    if !(instance && (empty_binding || empty_order)) {
+                    let definition = path.strip_prefix("/definitions/").is_some_and(|index| {
+                        !index.is_empty() && index.bytes().all(|byte| byte.is_ascii_digit())
+                    });
+                    let empty_children =
+                        key == "children" && value.as_array().is_some_and(Vec::is_empty);
+                    if !(instance && (empty_binding || empty_order) || definition && empty_children)
+                    {
                         return Err(NativeError::UnsupportedField(next));
                     }
                 }

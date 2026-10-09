@@ -6,6 +6,7 @@ pub const SUPPORTED: &[&str] = &[
     "audio-regions-v1",
     "core-v1",
     "meter-map-v1",
+    "nested-definitions-v1",
     "modifier-ordering-v1",
     "named-slots-v1",
     "note-patches-v1",
@@ -35,12 +36,26 @@ pub fn required(project: &Project) -> BTreeSet<&'static str> {
     {
         features.insert("named-slots-v1");
     }
+    if project
+        .definitions
+        .iter()
+        .any(|definition| !definition.children.is_empty())
+    {
+        features.insert("nested-definitions-v1");
+    }
     for instance in &project.instances {
         if instance.modifier_ordering.is_some() {
             features.insert("modifier-ordering-v1");
         }
         if !instance.modifier_bindings.is_empty() {
             features.insert("slot-bindings-v1");
+        }
+        if instance
+            .modifier_bindings
+            .values()
+            .any(|binding| binding.definition_revisions.is_some())
+        {
+            features.insert("nested-definitions-v1");
         }
         if instance
             .modifier_bindings
@@ -60,7 +75,18 @@ pub fn required(project: &Project) -> BTreeSet<&'static str> {
             if binding.slot != "notes" {
                 features.insert("named-slots-v1");
             }
+            if binding.definition_revisions.is_some() {
+                features.insert("nested-definitions-v1");
+            }
         }
+    }
+    if project.proposals.iter().any(|proposal| {
+        proposal
+            .base_anchor
+            .as_ref()
+            .is_some_and(|anchor| anchor.definition_revisions.is_some())
+    }) {
+        features.insert("nested-definitions-v1");
     }
     let operations = project
         .modifiers
