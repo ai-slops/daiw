@@ -17,13 +17,15 @@ pub enum NoteTransform {
     SetVelocity { velocity: f64 },
 }
 
-pub fn apply(
+pub(crate) fn apply_with_session(
     project: &mut Project,
     selection: SelectionHandle,
     transform: NoteTransform,
+    session: &mut crate::composition_cache::ResolutionSession<'_>,
 ) -> Result<String, CoreError> {
     validate_transform(&transform)?;
-    let mut notes = crate::note_selection::validate_handle(project, &selection)?;
+    let mut notes =
+        crate::note_selection::validate_handle_with_session(project, &selection, session)?;
     let selected = selection.note_ids.iter().collect::<BTreeSet<_>>();
     let mut changed = false;
     for note in &mut notes {
@@ -38,7 +40,13 @@ pub fn apply(
             "selected transform does not change any notes".into(),
         ));
     }
-    crate::instance_mutation::edit_notes(project, selection.instance_id, selection.scope, notes)?;
+    crate::instance_mutation::edit_notes_with_session(
+        project,
+        selection.instance_id,
+        selection.scope,
+        notes,
+        session,
+    )?;
     Ok(match selection.scope {
         EditScope::Source => "Transformed selected source notes".into(),
         EditScope::Instance => "Transformed selected instance notes".into(),

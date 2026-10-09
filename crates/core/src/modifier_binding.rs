@@ -67,12 +67,17 @@ fn select_slot_iter<'a>(
     })
 }
 
-pub fn capture(
+pub(crate) fn capture_with_session(
     project: &crate::project::Project,
     definition: &Definition,
     modifier: &Modifier,
+    session: &mut crate::composition_cache::ResolutionSession<'_>,
 ) -> Result<Option<ModifierBinding>, CoreError> {
-    let composed = crate::definition_composition::compose(project, definition)?;
+    let composed = session.compose(
+        project,
+        definition,
+        &mut crate::definition_composition::WorkMeter::new(),
+    )?;
     let mut slots = BTreeMap::new();
     for operation in &modifier.operations {
         if let Operation::ReplaceSlot { slot, notes } = operation {

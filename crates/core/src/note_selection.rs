@@ -37,9 +37,23 @@ pub fn query_notes(
     project: &Project,
     params: QueryNotesParams,
 ) -> Result<SelectionHandle, CoreError> {
+    let mut cache = crate::composition_cache::uncached_session();
+    query_notes_with_session(
+        project,
+        params,
+        &mut crate::composition_cache::ResolutionSession::new(&mut cache),
+    )
+}
+
+pub(crate) fn query_notes_with_session(
+    project: &Project,
+    params: QueryNotesParams,
+    session: &mut crate::composition_cache::ResolutionSession<'_>,
+) -> Result<SelectionHandle, CoreError> {
     validate_limit(params.max_results)?;
     let selector = crate::note_selector::normalize(params.selector)?;
-    let (definition, notes) = editable_context(project, &params.instance_id, params.scope)?;
+    let (definition, notes) =
+        editable_context(project, &params.instance_id, params.scope, session)?;
     let note_ids = crate::note_selector::resolve(&notes, definition, &selector)?;
     if note_ids.len() > params.max_results {
         return Err(CoreError::SelectionLimitExceeded {
@@ -63,9 +77,10 @@ pub fn query_notes(
     Ok(handle)
 }
 
-pub fn validate_handle(
+pub(crate) fn validate_handle_with_session(
     project: &Project,
     handle: &SelectionHandle,
+    session: &mut crate::composition_cache::ResolutionSession<'_>,
 ) -> Result<Vec<Note>, CoreError> {
     if handle.project_id != project.id || handle.base_revision != project.revision {
         return Err(CoreError::SelectionStale);
@@ -79,7 +94,8 @@ pub fn validate_handle(
             "selection proof does not match its contents".into(),
         ));
     }
-    let (definition, notes) = editable_context(project, &handle.instance_id, handle.scope)?;
+    let (definition, notes) =
+        editable_context(project, &handle.instance_id, handle.scope, session)?;
     if definition.id != handle.definition_id || definition.revision != handle.definition_revision {
         return Err(CoreError::SelectionStale);
     }
@@ -97,6 +113,7 @@ fn editable_context<'a>(
     project: &'a Project,
     instance_id: &InstanceId,
     scope: EditScope,
+    session: &mut crate::composition_cache::ResolutionSession<'_>,
 ) -> Result<(&'a Definition, Vec<Note>), CoreError> {
     let instance = project
         .instances
@@ -110,7 +127,12 @@ fn editable_context<'a>(
         .ok_or_else(|| CoreError::NotFound(instance.definition_id.to_string()))?;
     let notes = match scope {
         EditScope::Source => definition.notes.clone(),
-        EditScope::Instance => crate::resolver::editable_notes(project, instance_id)?,
+        EditScope::Instance => crate::resolver::editable_notes_metered_with_session(
+            project,
+            instance_id,
+            &mut crate::definition_composition::WorkMeter::new(),
+            session,
+        )?,
     };
     Ok((definition, notes))
 }

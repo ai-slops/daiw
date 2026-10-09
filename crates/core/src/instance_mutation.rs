@@ -6,11 +6,12 @@ use crate::note_patch::NotePatch;
 use crate::project::Project;
 use crate::validation::validate_notes;
 
-pub fn edit_notes(
+pub(crate) fn edit_notes_with_session(
     project: &mut Project,
     instance_id: InstanceId,
     scope: EditScope,
     notes: Vec<Note>,
+    session: &mut crate::composition_cache::ResolutionSession<'_>,
 ) -> Result<String, CoreError> {
     validate_notes(&notes)?;
     let definition_id = project
@@ -35,7 +36,12 @@ pub fn edit_notes(
             instance
                 .overrides
                 .retain(|operation| !matches!(operation, Operation::PatchNotes(_)));
-            let before = crate::resolver::editable_notes(project, &instance_id)?;
+            let before = crate::resolver::editable_notes_metered_with_session(
+                project,
+                &instance_id,
+                &mut crate::definition_composition::WorkMeter::new(),
+                session,
+            )?;
             if let Some(patch) = NotePatch::between(&before, notes) {
                 find_instance_mut(project, &instance_id)?
                     .overrides
@@ -46,10 +52,11 @@ pub fn edit_notes(
     Ok("Edited notes".to_owned())
 }
 
-pub fn apply_modifier(
+pub(crate) fn apply_modifier_with_session(
     project: &mut Project,
     instance_id: InstanceId,
     modifier_id: ModifierId,
+    session: &mut crate::composition_cache::ResolutionSession<'_>,
 ) -> Result<String, CoreError> {
     if !project
         .modifiers
@@ -62,7 +69,7 @@ pub fn apply_modifier(
     if instance.modifiers.contains(&modifier_id) {
         return Ok("Modifier already applied".to_owned());
     }
-    let binding = capture_binding(project, &instance_id, &modifier_id)?;
+    let binding = capture_binding(project, &instance_id, &modifier_id, session)?;
     let instance = find_instance_mut(project, &instance_id)?;
     if let Some(binding) = binding {
         instance
@@ -73,10 +80,11 @@ pub fn apply_modifier(
     Ok("Applied modifier".to_owned())
 }
 
-pub fn rebase_modifier(
+pub(crate) fn rebase_modifier_with_session(
     project: &mut Project,
     instance_id: InstanceId,
     modifier_id: ModifierId,
+    session: &mut crate::composition_cache::ResolutionSession<'_>,
 ) -> Result<String, CoreError> {
     if !find_instance_mut(project, &instance_id)?
         .modifiers
@@ -86,9 +94,10 @@ pub fn rebase_modifier(
             "modifier attachment {modifier_id}"
         )));
     }
-    let binding = capture_binding(project, &instance_id, &modifier_id)?.ok_or_else(|| {
-        CoreError::UnsupportedCapability("modifier has no slot selectors".to_owned())
-    })?;
+    let binding =
+        capture_binding(project, &instance_id, &modifier_id, session)?.ok_or_else(|| {
+            CoreError::UnsupportedCapability("modifier has no slot selectors".to_owned())
+        })?;
     find_instance_mut(project, &instance_id)?
         .modifier_bindings
         .insert(modifier_id, binding);
@@ -99,6 +108,7 @@ fn capture_binding(
     project: &Project,
     instance_id: &InstanceId,
     modifier_id: &ModifierId,
+    session: &mut crate::composition_cache::ResolutionSession<'_>,
 ) -> Result<Option<crate::modifier_binding::ModifierBinding>, CoreError> {
     let instance = project
         .instances
@@ -115,7 +125,7 @@ fn capture_binding(
         .iter()
         .find(|modifier| modifier.id == *modifier_id)
         .ok_or_else(|| CoreError::NotFound(modifier_id.to_string()))?;
-    crate::modifier_binding::capture(project, definition, modifier)
+    crate::modifier_binding::capture_with_session(project, definition, modifier, session)
 }
 
 pub fn find_instance_mut<'a>(
