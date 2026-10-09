@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { HunkSchema, ModifierSchema, OperationSchema, ProjectSchema, RpcResponseSchema } from "./project";
+import { DefinitionSchema, HunkSchema, ModifierSchema, OperationSchema, ProjectSchema, ProposalSchema, RpcResponseSchema } from "./project";
 
 const blankProject = {
   id: "project-1",
@@ -16,6 +16,37 @@ const blankProject = {
 };
 
 describe("ProjectSchema", () => {
+	it("preserves nested definition placements while defaulting older definitions", () => {
+		// Given
+		const legacy = { id: "root", name: "Root", length: 8, notes: [], revision: 1 };
+		const nested = {
+			...legacy,
+			children: [{ id: "placement-1", definitionId: "leaf", start: 2, length: 4 }],
+		};
+
+		// When
+		const parsedLegacy = DefinitionSchema.parse(legacy);
+		const parsedNested = DefinitionSchema.parse(nested);
+
+		// Then
+		expect(parsedLegacy.children).toBeUndefined();
+		expect(parsedNested.children).toEqual(nested.children);
+	});
+
+	it("preserves optional definition revision anchors on proposals", () => {
+		// Given
+		const proposal = {
+			id: "proposal-1", name: "Nested edit", request: "Lift the leaf", baseRevision: "rev-1",
+			instanceId: "instance-1", status: "pending", hunks: [],
+			definitionRevisions: [{ definitionId: "root", revision: 3 }, { definitionId: "leaf", revision: 7 }],
+		};
+
+		// When
+		const parsed = ProposalSchema.parse(proposal);
+
+		// Then
+		expect(parsed.definitionRevisions).toEqual(proposal.definitionRevisions);
+	});
   it("accepts every finite pitch persisted by the core wire contract", () => {
     const project = {
       ...blankProject,

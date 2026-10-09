@@ -13,7 +13,15 @@ const binding = {
 
 describe("modifier binding wire contract", () => {
   it("preserves persisted source targets and range on an instance", () => {
-    const payload = { ...instance, modifierBindings: { m1: binding } };
+    const payload = {
+      ...instance,
+      modifierBindings: {
+        m1: {
+          ...binding,
+          definitionRevisions: [{ definitionId: "d1", revision: 2 }, { definitionId: "leaf", revision: 5 }],
+        },
+      },
+    };
     expect(InstanceSchema.parse(payload)).toEqual(payload);
   });
 

@@ -65,6 +65,18 @@ const NoteSlotSchema = z.object({
   end: z.number().positive(),
 });
 
+export const DefinitionRevisionSchema = z.object({
+  definitionId: IdSchema,
+  revision: z.number().int().nonnegative(),
+});
+
+export const DefinitionChildSchema = z.object({
+  id: IdSchema,
+  definitionId: IdSchema,
+  start: z.number().nonnegative(),
+  length: z.number().positive(),
+});
+
 const ModifierBindingSchema = z.object({
   definitionId: IdSchema,
   definitionRevision: z.number().int().nonnegative(),
@@ -73,6 +85,7 @@ const ModifierBindingSchema = z.object({
     noteIds: z.array(IdSchema),
     cardinality: z.number().int().nonnegative(),
   })),
+  definitionRevisions: z.array(DefinitionRevisionSchema).optional(),
 });
 
 export const DefinitionSchema = z.object({
@@ -82,6 +95,7 @@ export const DefinitionSchema = z.object({
   notes: z.array(NoteSchema),
   revision: z.number().int().nonnegative(),
   slots: z.record(z.string().min(1), NoteSlotSchema).optional(),
+  children: z.array(DefinitionChildSchema).optional(),
 });
 
 export const ModifierOrderingSchema = z.object({
@@ -124,6 +138,7 @@ export const ProposalSchema = z.object({
   instanceId: IdSchema,
   status: z.enum(["pending", "accepted", "partiallyAccepted", "rejected"]),
   hunks: z.array(HunkSchema),
+  definitionRevisions: z.array(DefinitionRevisionSchema).optional(),
 });
 
 export const AssetSchema = z.object({
@@ -228,6 +243,7 @@ export type Project = z.infer<typeof ProjectSchema>;
 export type Track = z.infer<typeof TrackSchema>;
 export type Instance = z.infer<typeof InstanceSchema>;
 export type Definition = z.infer<typeof DefinitionSchema>;
+export type DefinitionChild = z.infer<typeof DefinitionChildSchema>;
 export type Modifier = z.infer<typeof ModifierSchema>;
 export type Proposal = z.infer<typeof ProposalSchema>;
 export type Note = z.infer<typeof NoteSchema>;
