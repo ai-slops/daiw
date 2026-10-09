@@ -67,6 +67,7 @@ pub fn check(
     project: &Project,
     id: &InstanceId,
     work: &mut crate::definition_composition::WorkMeter,
+    session: &mut crate::composition_cache::ResolutionSession<'_>,
 ) -> InstanceCheck {
     let Some(instance) = project.instances.iter().find(|instance| instance.id == *id) else {
         return InstanceCheck::Absent;
@@ -79,7 +80,7 @@ pub fn check(
     let result = definition
         .ok_or_else(|| CoreError::NotFound(instance.definition_id.to_string()))
         .and_then(|definition| {
-            crate::resolver::editable_notes_metered(project, id, work)
+            crate::resolver::editable_notes_metered_with_session(project, id, work, session)
                 .map(|notes| (definition, notes.len()))
         });
     match result {

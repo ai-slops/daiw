@@ -12,27 +12,13 @@ pub struct RebaseAssessment {
     pub diagnostics: Vec<Diagnostic>,
 }
 
-pub fn assess(
-    project: &Project,
-    proposal: &Proposal,
-    selected: &BTreeSet<HunkId>,
-    fingerprint_changed: bool,
-) -> Result<RebaseAssessment, CoreError> {
-    assess_metered(
-        project,
-        proposal,
-        selected,
-        fingerprint_changed,
-        &mut crate::definition_composition::WorkMeter::new(),
-    )
-}
-
 pub fn assess_metered(
     project: &Project,
     proposal: &Proposal,
     selected: &BTreeSet<HunkId>,
     fingerprint_changed: bool,
     work: &mut crate::definition_composition::WorkMeter,
+    session: &mut crate::composition_cache::ResolutionSession<'_>,
 ) -> Result<RebaseAssessment, CoreError> {
     let instance = project
         .instances
@@ -48,7 +34,7 @@ pub fn assess_metered(
             .find(|definition| definition.id == item.definition_id)
     });
     let current_notes = current_definition
-        .map(|definition| crate::definition_composition::compose_metered(project, definition, work))
+        .map(|definition| session.compose(project, definition, work))
         .transpose()?
         .map(|notes| notes.into_iter().map(|item| item.note).collect::<Vec<_>>());
     let mut results = Vec::new();

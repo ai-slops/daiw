@@ -8,6 +8,7 @@ pub(crate) fn apply(
     project: &Project,
     proposal_id: Option<&ProposalId>,
     work: &mut WorkMeter,
+    session: &mut crate::composition_cache::ResolutionSession<'_>,
 ) -> Result<Project, CoreError> {
     let mut rendered = project.clone();
     let Some(id) = proposal_id else {
@@ -42,6 +43,7 @@ pub(crate) fn apply(
         &selected,
         fingerprint_changed,
         work,
+        session,
     )?;
     if !assessment.diagnostics.is_empty() {
         return Err(assessment_error(&assessment.diagnostics));

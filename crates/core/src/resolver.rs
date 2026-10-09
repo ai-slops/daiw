@@ -11,8 +11,21 @@ pub fn snapshot(
     project: &Project,
     proposal_id: Option<&ProposalId>,
 ) -> Result<Snapshot, CoreError> {
+    let mut cache = crate::composition_cache::uncached_session();
+    snapshot_with_session(
+        project,
+        proposal_id,
+        &mut crate::composition_cache::ResolutionSession::new(&mut cache),
+    )
+}
+
+pub(crate) fn snapshot_with_session(
+    project: &Project,
+    proposal_id: Option<&ProposalId>,
+    session: &mut crate::composition_cache::ResolutionSession<'_>,
+) -> Result<Snapshot, CoreError> {
     let mut work = crate::definition_composition::WorkMeter::new();
-    let rendered = crate::proposal_preview::apply(project, proposal_id, &mut work)?;
+    let rendered = crate::proposal_preview::apply(project, proposal_id, &mut work, session)?;
     validate_project(&rendered)?;
     let mut tracks = rendered.tracks.clone();
     let mut notes = Vec::new();
@@ -27,8 +40,7 @@ pub fn snapshot(
             .iter()
             .find(|track| track.id == instance.track_id)
             .ok_or_else(|| CoreError::NotFound(instance.track_id.to_string()))?;
-        let composed =
-            crate::definition_composition::compose_metered(&rendered, definition, &mut work)?;
+        let composed = session.compose(&rendered, definition, &mut work)?;
         let operations = InstanceResolution {
             project: &rendered,
             instance,
@@ -107,18 +119,11 @@ pub fn snapshot(
     })
 }
 
-pub(crate) fn editable_notes(project: &Project, id: &InstanceId) -> Result<Vec<Note>, CoreError> {
-    editable_notes_metered(
-        project,
-        id,
-        &mut crate::definition_composition::WorkMeter::new(),
-    )
-}
-
-pub(crate) fn editable_notes_metered(
+pub(crate) fn editable_notes_metered_with_session(
     project: &Project,
     id: &InstanceId,
     work: &mut crate::definition_composition::WorkMeter,
+    session: &mut crate::composition_cache::ResolutionSession<'_>,
 ) -> Result<Vec<Note>, CoreError> {
     let instance = project
         .instances
@@ -130,7 +135,7 @@ pub(crate) fn editable_notes_metered(
         .iter()
         .find(|definition| definition.id == instance.definition_id)
         .ok_or_else(|| CoreError::NotFound(instance.definition_id.to_string()))?;
-    let composed = crate::definition_composition::compose_metered(project, definition, work)?;
+    let composed = session.compose(project, definition, work)?;
     let operations = InstanceResolution {
         project,
         instance,
@@ -156,9 +161,10 @@ pub(crate) fn editable_notes_metered(
     )
 }
 
-pub(crate) fn explain_notes(
+pub(crate) fn explain_notes_with_session(
     project: &Project,
     id: &InstanceId,
+    session: &mut crate::composition_cache::ResolutionSession<'_>,
 ) -> Result<(Vec<Note>, Vec<crate::music::CompositionNote>), CoreError> {
     let mut work = crate::definition_composition::WorkMeter::new();
     let instance = project
@@ -171,7 +177,7 @@ pub(crate) fn explain_notes(
         .iter()
         .find(|definition| definition.id == instance.definition_id)
         .ok_or_else(|| CoreError::NotFound(instance.definition_id.to_string()))?;
-    let composed = crate::definition_composition::compose_metered(project, definition, &mut work)?;
+    let composed = session.compose(project, definition, &mut work)?;
     let composition = composed
         .iter()
         .cloned()
