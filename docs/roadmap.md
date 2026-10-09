@@ -6,6 +6,8 @@ Completed: identity-based instance note patches, scoped dry-run note-target/impa
 
 ## Stage 0: Headless domain foundation
 
+Instance-resolution follow-up completed: bounded post-modifier pattern reuse with live guards, exact work replay and separate human-only diagnostics. Next substantial runtime work is disk streaming and signal/DSP compilation; final-event reuse and measured large-session profiling are also unfinished. See [instance-resolution.md](instance-resolution.md).
+
 Incremental-resolution follow-up completed: worker-local source-composition reuse, content-based dependency invalidation, deterministic bounded LRU and human-only cache diagnostics. Remaining incremental work includes operation/instance-level reuse, signal compilation, streaming and measured large-session budgets. See [incremental-resolution.md](incremental-resolution.md).
 
 Nested-note follow-up completed: child placements, bounded DAG resolution, stable nested IDs/provenance, source/local editing, descendant binding guards and composition UI. Next work remains broader selector/application policies and incremental compilation/streaming; part/lane bindings, nested routing and flow graphs are not implied by this subset. See [composition.md](composition.md).

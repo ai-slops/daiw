@@ -4,6 +4,8 @@ Audit date: **2026-09-22**. Target: the supplied 2026-09-01 v0.1 implementation 
 
 ## Outcome
 
+**2026-10-09 instance-resolution follow-up:** post-modifier patterns are now reused per logical instance, independently of source composition. Placement/crop/track output remains live, local edits invalidate one instance, and source edits invalidate direct and nested dependents. Exact operation-work traces preserve budget errors. Validation: **242 Rust / 56 host / 71 client tests** plus live HTTP/WAV equivalence. See [instance-resolution.md](instance-resolution.md). DSP/signal compilation and disk streaming remain open.
+
 **2026-10-09 incremental-resolution follow-up:** the persistent worker now reuses dependency-keyed source compositions with bounded LRU retention and unchanged logical work limits. Snapshot/explain/query/dry-run/edit/proposal paths use explicit cache sessions; current guards and operations still run. Differential and live HTTP verification passed: **230 Rust / 52 host / 71 client tests**. See [incremental-resolution.md](incremental-resolution.md). This is not full incremental DSP compilation or disk streaming.
 
 **2026-10-09 follow-up:** bounded nested note composition now supports stable child placements, source propagation, per-instance occurrence patches, path provenance, transitive impact and descendant-aware strong bindings/proposal guards. The Inspector edits placements and navigates sources without flattening; the root Source piano roll shows read-only nested ghosts. Full contracts and exclusions are in [composition.md](composition.md). This closes the initial nested-note subset, not the complete part/lane/flow model or incremental compiler.
