@@ -1,6 +1,6 @@
 # Bounded render output and HTTP delivery
 
-The host now renders directly to a verified WAV file and streams that file to HTTP clients with backpressure. The production render/download path no longer collects a whole master, whole track scratch, encoded WAV, or host response buffer. Browser audition still uses `arrayBuffer()` and `decodeAudioData()`; this is offline output streaming, not real-time or long-session playback.
+The host renders directly to a verified WAV file and streams that file to HTTP clients with backpressure. The production render/download path no longer collects a whole master, whole track scratch, encoded WAV, or host response buffer. The subsequent [browser streaming layer](browser-streaming.md) also replaces whole-WAV audition with bounded PCM ranges. This remains offline rendering, not live DSP or unrestricted long-session playback.
 
 ## DSP and WAV compatibility
 
@@ -57,4 +57,4 @@ A live HTTP fixture download was 13,165,760 bytes, delivered in 202 observed cli
 
 For six-track silent output fixtures, sampled Linux `/proc` high-water RSS was 5,408 KiB for four seconds and 5,372 KiB for 180 seconds. The latter produced a 34,560,044-byte WAV while stdout was only 178 bytes. These 10-ms samples demonstrate the tested output path, not a universal memory bound or performance certification. See [verification.md](verification.md) for hashes, counts and test scope.
 
-Remaining work includes browser/native streaming playback, real-time read-ahead, longer-duration policy qualification, signal graph/DSP compilation and physical-device testing. The three-minute output policy remains unchanged.
+Bounded browser streaming playback is now implemented separately. Remaining work includes native streaming playback, real-time read-ahead, longer-duration policy qualification, signal graph/DSP compilation and physical-device testing. The three-minute output policy remains unchanged.

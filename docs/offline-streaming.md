@@ -2,7 +2,7 @@
 
 The HTTP host now decodes imported sources directly into managed binary PCM files and passes bounded descriptors, not sample arrays, to the renderer. Rendering reads each source in blocks of at most 4,096 source frames. This removes whole-source PCM JSON and source-size-proportional decoded buffers from the host/render input path.
 
-This is **offline source streaming**, not full-session or real-time streaming. The subsequent [output-streaming layer](output-streaming.md) now bounds production render output and HTTP delivery too. Upload bodies and browser `AudioBuffer`s remain resident; legacy resident render APIs remain available. Output duration stays capped at three minutes. Native callback read-ahead, browser/native streaming playback and device qualification remain open.
+This is **offline source streaming**, not full-session or real-time streaming. Subsequent [output streaming](output-streaming.md) bounds render output/HTTP delivery and [browser streaming](browser-streaming.md) bounds audition buffers. Upload bodies remain resident; legacy resident render APIs remain available. Output duration stays capped at three minutes. Native callback read-ahead, native streaming playback and device qualification remain open.
 
 ## CLI and binary format
 
