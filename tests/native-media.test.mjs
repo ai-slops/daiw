@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { ProjectService } from '../app/service.mjs';
 import { MediaStore, importDurationBeats, renderDurationSeconds } from '../app/media.mjs';
+import { drainRender } from './helpers/media.mjs';
 
 test('host media timing maps import source seconds and enforce mapped render duration', () => {
   const tempoMap = { points: [{ at: 0, bpm: 120, curve: 'step' }, { at: 4, bpm: 60, curve: 'step' }] };
@@ -30,6 +31,18 @@ test('host render rejects a tempo-mapped arrangement beyond 180 seconds', async 
   await assert.rejects(media.render('project-1'), { code: 'ResourceLimit', status: 413 });
 });
 
+test('an already-aborted queued render skips snapshot and source work', async () => {
+  // Given an abort signal cancelled before the queued render begins.
+  let executions = 0;
+  const service = { execute: async () => { executions += 1; throw new Error('must not execute'); } };
+  const media = new MediaStore({ directory: '/unused', service, binary: '/unused' });
+  const controller = new AbortController();
+  controller.abort();
+  // When rendering is queued, then cancellation wins before snapshot or source checks.
+  await assert.rejects(media.render('project-1', undefined, undefined, controller.signal), { code: 'RequestAborted' });
+  assert.equal(executions, 0);
+});
+
 test('imported asset references cannot silently reuse a different local source', async (t) => {
   const directory = await mkdtemp(join(tmpdir(), 'daiw-native-media-'));
   const service = new ProjectService({ directory, binary: resolve('target/debug/daiw-core') });
@@ -51,7 +64,7 @@ test('imported asset references cannot silently reuse a different local source',
   form.set('trackId', state.tracks[0].id); form.set('start', '0'); form.set('expectedRevision', state.revision);
   ({ state } = await media.importAudio(state.id, form));
   assert.equal(state.regions[0].duration, 961 / 960);
-  const rendered = (await media.render(state.id)).wav;
+  const rendered = await drainRender(await media.render(state.id));
   assert.ok(rendered.length > 44);
   assert.notEqual(rendered.readInt16LE(44 + (frames - 1) * 4), 0);
   for (const mismatch of [{ hash: '0'.repeat(64) }, { frames: state.assets[0].frames + 1 }]) {

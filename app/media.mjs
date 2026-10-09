@@ -5,11 +5,13 @@ import { z } from 'zod';
 import { runBinary } from './worker.mjs';
 import { ServiceError } from './errors.mjs';
 import { SourceCache } from './source-cache.mjs';
+import { RenderCache } from './render-cache.mjs';
+import { parseRenderDescriptor } from './wav-format.mjs';
 import { beatAtSeconds, secondsAtBeat, validateMeterMap, validateTempoMap } from '../shared/timing.mjs';
 
 const MAX_RENDER_SOURCES = 64;
 const MAX_RENDER_SOURCE_BYTES = 1024 * 1024 * 1024;
-const MAX_RENDER_WAV = 64 * 1024 * 1024;
+const DESCRIPTOR_STDOUT_LIMIT = 16 * 1024;
 const RENDER_PROFILE = 'daiw-render-file-backed-v1-48000';
 const tempoSchema = z.number().min(20).max(400);
 const meterSchema = z.tuple([z.number().int().min(1).max(255), z.number().int().min(1).max(255)]);
@@ -35,6 +37,32 @@ function missing(error) {
   return error instanceof Error && 'code' in error && error.code === 'ENOENT';
 }
 
+function aborted() {
+  return new ServiceError('RequestAborted', 'Audio rendering was cancelled.', 499);
+}
+
+function throwIfAborted(signal) {
+  if (signal?.aborted) throw aborted();
+}
+
+function waitForAbort(operation, signal) {
+  if (!signal) return operation;
+  if (signal.aborted) return Promise.reject(aborted());
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (callback, value) => {
+      if (settled) return;
+      settled = true;
+      signal.removeEventListener('abort', onAbort);
+      callback(value);
+    };
+    const onAbort = () => finish(reject, aborted());
+    signal.addEventListener('abort', onAbort, { once: true });
+    operation.then((value) => finish(resolve, value), (error) => finish(reject, error));
+    if (signal.aborted) onAbort();
+  });
+}
+
 export function importDurationBeats(startBeat, sourceSeconds, timing) {
   const duration = beatAtSeconds(secondsAtBeat(startBeat, timing) + sourceSeconds, timing) - startBeat;
   return Math.ceil(duration * 960 - 1e-9) / 960;
@@ -55,7 +83,8 @@ export class MediaStore {
     await Promise.all(['objects', 'cache/audio', 'cache/render'].map((path) => mkdir(join(this.directory, path), { recursive: true })));
     this.rendererFingerprint = createHash('sha256').update(await readFile(this.binary)).digest('hex');
     this.sources = new SourceCache({ directory: this.directory, binary: this.binary, database: this.service.store.db, rendererFingerprint: this.rendererFingerprint });
-    await this.sources.initialize();
+    this.renders = new RenderCache({ directory: this.directory, database: this.service.store.db });
+    await Promise.all([this.sources.initialize(), this.renders.initialize()]);
   }
   async #atomic(path, bytes) {
     await mkdir(dirname(path), { recursive: true });
@@ -97,13 +126,15 @@ export class MediaStore {
     const regionId = createHash('sha256').update(`${projectId}:${idempotencyKey}`).digest('hex');
     return this.service.execute({ projectId, method: 'change.apply', idempotencyKey, params: { expectedRevision: fields.expectedRevision, command: { type: 'addAudioRegion', asset, region: { id: regionId, trackId: fields.trackId, assetId: asset.id, start: fields.start, duration, gain: 0, sourceOffset: 0 } } } });
   }
-  render(projectId, proposalId, expectedRevision) {
-    const next = this.#renderQueue.then(() => this.#render(projectId, proposalId, expectedRevision));
+  render(projectId, proposalId, expectedRevision, signal) {
+    const next = this.#renderQueue.then(() => this.#render(projectId, proposalId, expectedRevision, signal));
     this.#renderQueue = next.then(() => undefined, () => undefined);
     return next;
   }
-  async #render(projectId, proposalId, expectedRevision) {
+  async #render(projectId, proposalId, expectedRevision, signal) {
+    throwIfAborted(signal);
     const response = await this.service.execute({ projectId, method: 'project.snapshot', params: proposalId ? { proposalId } : {} });
+    throwIfAborted(signal);
     if (!response.ok) throw new ServiceError(response.error.code, response.error.message, 422);
     const result = z.object({ snapshot: snapshotSchema }).safeParse(response.result);
     const snapshot = result.success ? result.data.snapshot : snapshotSchema.parse(response.result);
@@ -116,22 +147,35 @@ export class MediaStore {
     for (const assetId of assetIds) {
       const reference = response.state.assets.find((asset) => asset.id === assetId);
       if (!reference) throw new ServiceError('MissingAsset', 'The snapshot refers to an unknown project asset.', 422);
-      const decoded = await this.sources.get(reference);
+      const decoded = await waitForAbort(this.sources.get(reference), signal);
+      throwIfAborted(signal);
       totalBytes += decoded.byteLength;
       if (totalBytes > MAX_RENDER_SOURCE_BYTES) throw new ServiceError('ResourceLimit', 'Decoded render sources exceed 1 GB.', 413);
       sources[assetId] = { cacheId: decoded.cacheId, sha256: decoded.sha256, frames: decoded.frames, sampleRate: decoded.sampleRate, channels: decoded.channels, byteLength: decoded.byteLength };
     }
     const identities = assetIds.map((assetId) => [assetId, sources[assetId].sha256]);
     const key = createHash('sha256').update(this.rendererFingerprint).update(JSON.stringify(identities)).update(JSON.stringify(snapshot)).update(RENDER_PROFILE).digest('hex');
-    const path = join(this.directory, 'cache/render', `${key}.wav`);
-    let wav;
-    try { wav = await readFile(path); } catch (error) {
-      if (!missing(error)) throw error;
-      wav = await runBinary({ binary: this.binary, args: ['--render-file-backed', '--source-root', this.sources.cacheRoot], input: JSON.stringify({ snapshot, sources }), limit: MAX_RENDER_WAV, resourceLimitExitCode: 2 });
-      await this.#atomic(path, wav);
+    throwIfAborted(signal);
+    const existing = await this.renders.open(key);
+    if (signal?.aborted) {
+      await existing?.handle.close();
+      throw aborted();
     }
-    this.service.store.db.prepare('INSERT OR IGNORE INTO renders VALUES (?,?,?,?,?)').run(key, projectId, snapshot.revision, `${RENDER_PROFILE}@${this.rendererFingerprint}`, new Date().toISOString());
-    return { wav, revision: snapshot.revision, key };
+    if (existing) return { ...existing, revision: snapshot.revision, key };
+    const profile = `${RENDER_PROFILE}@${this.rendererFingerprint}`;
+    const built = await this.renders.build({ key, projectId, revision: snapshot.revision, profile, produce: async (temporary) => {
+      const stdout = await runBinary({ binary: this.binary, args: ['--render-to-file', '--source-root', this.sources.cacheRoot, '--output', temporary], input: JSON.stringify({ snapshot, sources }), limit: DESCRIPTOR_STDOUT_LIMIT, resourceLimitExitCode: 2, infrastructureExitCode: 3, signal });
+      try { return parseRenderDescriptor(JSON.parse(stdout.toString('utf8'))); }
+      catch (error) {
+        if (!(error instanceof z.ZodError) && !(error instanceof SyntaxError)) throw error;
+        throw new ServiceError('RenderInfrastructure', 'Renderer returned an invalid file descriptor.', 500);
+      }
+    } });
+    if (signal?.aborted) {
+      await built.handle.close();
+      throw aborted();
+    }
+    return { ...built, revision: snapshot.revision, key };
   }
   async waveform(projectId, assetId) {
     const state = this.service.store.get(projectId);

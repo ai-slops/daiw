@@ -1,12 +1,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { watch } from 'node:fs';
 import { chmod, mkdir, mkdtemp, readFile, readdir, rename, rm, stat, symlink, truncate, writeFile } from 'node:fs/promises';
+import { once } from 'node:events';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { ProjectService } from '../app/service.mjs';
 import { MediaStore } from '../app/media.mjs';
 import { MAX_PCM_FILE_BYTES, parseDescriptor } from '../app/pcm-format.mjs';
+import { drainRender } from './helpers/media.mjs';
 
 const fakeRenderer = `#!/usr/bin/env node
 const { createHash } = await import('node:crypto');
@@ -15,6 +18,8 @@ const args = process.argv.slice(2);
 const log = process.env.DAIW_FAKE_MEDIA_LOG;
 if (args[0] === '--decode-file') {
   if (args.length !== 5 || args[1] !== '--input' || args[3] !== '--output') process.exit(31);
+  const stopPath = process.env.DAIW_FAKE_DECODE_STOP;
+  if (stopPath) { await writeFile(stopPath, String(process.pid)); process.kill(process.pid, 'SIGSTOP'); }
   const original = await readFile(args[2]);
   const frames = original.includes(Buffer.from('LONG_SOURCE')) ? 4_000_001 : 64;
   const sampleRate = frames > 64 ? 192000 : 48000;
@@ -30,8 +35,8 @@ if (args[0] === '--decode-file') {
   await writeFile(args[4], pcm);
   await appendFile(log, 'decode\\n');
   process.stdout.write(JSON.stringify({ format: 'daiw-f32le-v1', frames, sampleRate, channels: 1, byteLength: pcm.length, sha256: createHash('sha256').update(pcm).digest('hex'), peaks: Array(128).fill(0.5) }));
-} else if (args[0] === '--render-file-backed') {
-  if (args.length !== 3 || args[1] !== '--source-root') process.exit(32);
+} else if (args[0] === '--render-to-file') {
+  if (args.length !== 5 || args[1] !== '--source-root' || args[3] !== '--output') process.exit(32);
   let input = '';
   for await (const chunk of process.stdin) input += chunk;
   const parsed = JSON.parse(input);
@@ -42,12 +47,17 @@ if (args[0] === '--decode-file') {
     const bytes = await readFile(path);
     if (createHash('sha256').update(bytes).digest('hex') !== source.sha256) process.exit(35);
   }
+  if (process.env.DAIW_FAKE_RENDER_FAILURE) {
+    await writeFile(args[4], Buffer.from('partial'));
+    process.exit(Number(process.env.DAIW_FAKE_RENDER_FAILURE));
+  }
   await appendFile(log, 'render\\n');
   const wav = Buffer.alloc(48); wav.write('RIFF', 0); wav.writeUInt32LE(40, 4); wav.write('WAVEfmt ', 8);
-  wav.writeUInt32LE(16, 16); wav.writeUInt16LE(1, 20); wav.writeUInt16LE(1, 22);
-  wav.writeUInt32LE(48000, 24); wav.writeUInt32LE(96000, 28); wav.writeUInt16LE(2, 32); wav.writeUInt16LE(16, 34);
+  wav.writeUInt32LE(16, 16); wav.writeUInt16LE(1, 20); wav.writeUInt16LE(2, 22);
+  wav.writeUInt32LE(48000, 24); wav.writeUInt32LE(192000, 28); wav.writeUInt16LE(4, 32); wav.writeUInt16LE(16, 34);
   wav.write('data', 36); wav.writeUInt32LE(4, 40); wav.writeInt16LE(1000, 44); wav.writeInt16LE(-1000, 46);
-  process.stdout.write(wav);
+  await writeFile(args[4], wav);
+  process.stdout.write(JSON.stringify({ format: 'daiw-wav-pcm16-v1', sampleRate: 48000, channels: 2, frames: 1, byteLength: wav.length, sha256: createHash('sha256').update(wav).digest('hex') }));
 } else process.exit(30);
 `;
 
@@ -110,6 +120,7 @@ test('cache corruption is rebuilt once and preserves the render identity', async
   const f = await fixture(t);
   await importSource(f);
   const first = await f.media.render(f.state.id);
+  const firstBytes = await drainRender(first);
   const row = f.service.store.db.prepare('SELECT * FROM decoded_audio_cache').get();
   const cachePath = join(f.directory, 'cache/audio', `${row.cache_id}.pcm`);
   const pristine = await readFile(cachePath);
@@ -126,9 +137,10 @@ test('cache corruption is rebuilt once and preserves the render identity', async
     await writeFile(cachePath, changed);
     await rm(join(f.directory, 'cache/render', `${first.key}.wav`));
     const rendered = await f.media.render(f.state.id);
+    const renderedBytes = await drainRender(rendered);
     // Then each cache is regenerated from the verified original and keeps the same render key.
     assert.equal(rendered.key, first.key);
-    assert.deepEqual(rendered.wav, first.wav);
+    assert.deepEqual(renderedBytes, firstBytes);
     assert.deepEqual(await readFile(cachePath), pristine);
   }
   assert.equal((await readFile(f.log, 'utf8')).split('decode\n').length - 1, 5);
@@ -240,4 +252,128 @@ test('restart removes an unindexed published PCM before reserving its rebuild bu
   assert.equal(waveform.frames, 64);
   assert.equal((await readFile(f.log, 'utf8')).split('decode\n').length - 1, 2);
   assert.equal(f.service.store.db.prepare('SELECT cache_id FROM decoded_audio_cache').get().cache_id, row.cache_id);
+});
+
+test('WAV corruption and missing metadata rebuild from verified sources', async (t) => {
+  // Given a published render with indexed descriptor metadata.
+  const f = await fixture(t);
+  await importSource(f);
+  const first = await f.media.render(f.state.id);
+  const pristine = await drainRender(first);
+  const path = join(f.directory, 'cache/render', `${first.key}.wav`);
+  const row = f.service.store.db.prepare('SELECT * FROM render_cache_files WHERE key=?').get(first.key);
+  assert.equal(row.byte_length, pristine.length);
+  assert.match(row.sha256, /^[a-f0-9]{64}$/);
+  // When same-length payload/header corruption and an unindexed legacy file are encountered.
+  for (const offset of [0, 44, null]) {
+    if (offset === null) f.service.store.db.prepare('DELETE FROM render_cache_files WHERE key=?').run(first.key);
+    else { const corrupt = Buffer.from(pristine); corrupt[offset] ^= 0xff; await writeFile(path, corrupt); }
+    const rebuilt = await f.media.render(f.state.id);
+    assert.deepEqual(await drainRender(rebuilt), pristine);
+  }
+  // Then each invalid warm file was rendered again rather than served.
+  assert.equal((await readFile(f.log, 'utf8')).split('render\n').length - 1, 4);
+});
+
+test('failed render leaves no temp, published file, or database rows', async (t) => {
+  // Given a renderer that creates a partial output and reports infrastructure failure.
+  const f = await fixture(t);
+  const previous = process.env.DAIW_FAKE_RENDER_FAILURE;
+  process.env.DAIW_FAKE_RENDER_FAILURE = '3';
+  t.after(() => { if (previous === undefined) delete process.env.DAIW_FAKE_RENDER_FAILURE; else process.env.DAIW_FAKE_RENDER_FAILURE = previous; });
+  // When rendering fails, then cleanup waits for child close and removes every partial publication.
+  await assert.rejects(f.media.render(f.state.id), { code: 'RenderInfrastructure', status: 500 });
+  assert.deepEqual(await readdir(join(f.directory, 'cache/render-temp')), []);
+  assert.deepEqual(await readdir(join(f.directory, 'cache/render')), []);
+  assert.equal(f.service.store.db.prepare('SELECT count(*) AS total FROM renders').get().total, 0);
+  assert.equal(f.service.store.db.prepare('SELECT count(*) AS total FROM render_cache_files').get().total, 0);
+});
+
+test('render cache reserves its maximum file size within the two GiB budget', async (t) => {
+  // Given a sparse unrelated cache file leaving one byte less than the build reservation.
+  const f = await fixture(t);
+  const filler = join(f.directory, 'cache/render', 'budget.bin');
+  await writeFile(filler, '');
+  await truncate(filler, 2 * 1024 * 1024 * 1024 - 34_560_044 + 1);
+  // When a cold render starts, then it fails before spawning the renderer.
+  await assert.rejects(f.media.render(f.state.id), { code: 'ResourceLimit', status: 413 });
+  assert.equal((await readFile(f.log, 'utf8')).split('render\n').length - 1, 0);
+});
+
+test('startup removes only owned render temps and known unindexed WAV files', async (t) => {
+  // Given abandoned owned artifacts beside arbitrary files.
+  const f = await fixture(t);
+  const key = 'a'.repeat(64);
+  await writeFile(join(f.directory, 'cache/render-temp', `${key}.12345678-1234-1234-1234-123456789abc.tmp`), 'partial');
+  await writeFile(join(f.directory, 'cache/render-temp', 'keep.tmp'), 'keep');
+  await writeFile(join(f.directory, 'cache/render', `${key}.wav`), 'orphan');
+  await writeFile(join(f.directory, 'cache/render', 'keep.wav'), 'keep');
+  // When startup cleanup runs, then only files matching owned patterns disappear.
+  await f.media.initialize();
+  assert.deepEqual(await readdir(join(f.directory, 'cache/render-temp')), ['keep.tmp']);
+  assert.deepEqual((await readdir(join(f.directory, 'cache/render'))).sort(), ['keep.wav']);
+});
+
+test('render paths reject symlink escapes and a restart reuses the verified publication', async (t) => {
+  // Given a valid render replaced by a symlink to an outside file.
+  const f = await fixture(t);
+  const first = await f.media.render(f.state.id);
+  const pristine = await drainRender(first);
+  const path = join(f.directory, 'cache/render', `${first.key}.wav`);
+  const outside = join(f.directory, 'outside-render.wav');
+  await rename(path, outside);
+  await symlink(outside, path);
+  // When the render is requested, then only the managed link is replaced.
+  const rebuilt = await f.media.render(f.state.id);
+  assert.deepEqual(await drainRender(rebuilt), pristine);
+  assert.deepEqual(await readFile(outside), pristine);
+  const rendersBeforeRestart = (await readFile(f.log, 'utf8')).split('render\n').length - 1;
+  const restarted = new MediaStore({ directory: f.directory, service: f.service, binary: f.binary });
+  await restarted.initialize();
+  assert.deepEqual(await drainRender(await restarted.render(f.state.id)), pristine);
+  assert.equal((await readFile(f.log, 'utf8')).split('render\n').length - 1, rendersBeforeRestart);
+});
+
+test('aborted render stops waiting while shared cold-source regeneration completes for a peer', { skip: process.platform !== 'linux', timeout: 5000 }, async (t) => {
+  // Given an imported source whose cold decoder pauses after a readiness signal.
+  const f = await fixture(t);
+  await importSource(f);
+  const row = f.service.store.db.prepare('SELECT * FROM decoded_audio_cache').get();
+  await rm(join(f.directory, 'cache/audio', `${row.cache_id}.pcm`));
+  f.service.store.db.prepare('DELETE FROM decoded_audio_cache').run();
+  const signalDirectory = join(f.directory, 'signals');
+  await mkdir(signalDirectory);
+  const ready = join(signalDirectory, 'decoder-ready');
+  const changes = watch(signalDirectory);
+  t.after(() => changes.close());
+  const previous = process.env.DAIW_FAKE_DECODE_STOP;
+  process.env.DAIW_FAKE_DECODE_STOP = ready;
+  t.after(() => { if (previous === undefined) delete process.env.DAIW_FAKE_DECODE_STOP; else process.env.DAIW_FAKE_DECODE_STOP = previous; });
+  const controller = new AbortController();
+  const first = f.media.render(f.state.id, undefined, undefined, controller.signal);
+  await once(changes, 'change');
+  let decoderPid = 0;
+  while (decoderPid === 0) {
+    decoderPid = Number(await readFile(ready, 'utf8'));
+    if (decoderPid === 0) await new Promise((resolve) => setImmediate(resolve));
+  }
+  t.after(() => { try { process.kill(decoderPid, 'SIGKILL'); } catch (error) { if (error.code !== 'ESRCH') throw error; } });
+  while (!(await readFile(`/proc/${decoderPid}/status`, 'utf8')).includes('State:\tT')) await new Promise((resolve) => setImmediate(resolve));
+  // When the first caller aborts, then it settles before the shared decoder is released.
+  let settled = false;
+  let firstError;
+  first.then(() => { settled = true; }, (error) => { settled = true; firstError = error; });
+  controller.abort();
+  await new Promise((resolve) => setImmediate(resolve));
+  const prompt = settled;
+  const second = prompt ? f.media.render(f.state.id) : undefined;
+  process.kill(decoderPid, 'SIGCONT');
+  if (!prompt) await first.catch(() => undefined);
+  assert.equal(prompt, true);
+  assert.equal(firstError?.code, 'RequestAborted');
+  // Then the peer consumes the completed valid cache without a duplicate decode or temp leak.
+  assert.ok(second);
+  await drainRender(await second);
+  assert.equal((await readFile(f.log, 'utf8')).split('decode\n').length - 1, 2);
+  assert.deepEqual(await readdir(join(f.directory, 'cache/source-temp')), []);
 });
