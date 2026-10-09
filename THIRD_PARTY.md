@@ -14,6 +14,7 @@ No audio from third-party songs, commercial sessions, or plugin binaries is incl
 | serde / serde_json | Typed wire format | MIT / Apache-2.0 |
 | thiserror | Domain error types | MIT / Apache-2.0 |
 | BLAKE3 | Canonical fingerprints | CC0-1.0 / Apache-2.0 / Apache-2.0 with LLVM exception |
+| sha2 0.10.9 | Binary PCM payload/file integrity | MIT / Apache-2.0 |
 | SQLite via Node.js | Transactional persistence | Public domain; Node.js MIT |
 | Symphonia | WAV/AIFF/FLAC decoding | MPL-2.0 |
 | CPAL | Optional native audio output | Apache-2.0 |

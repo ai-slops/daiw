@@ -13,11 +13,13 @@ cpal = { version = "0.15", optional = true }
 daiw-timing.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 rtrb = "0.3"
 symphonia = { version = "0.5", features = ["aiff", "flac", "pcm", "wav"] }
 thiserror.workspace = true
 
 [dev-dependencies]
+daiw-core = { path = "../core" }
 stats_alloc = "0.1"
 
 [lib]

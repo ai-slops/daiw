@@ -10,6 +10,7 @@ license = "MIT"
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["float_roundtrip"] }
+sha2 = "0.10"
 thiserror = "2"
 blake3 = { version = "1", features = ["pure"] }
 daiw-timing = { path = "crates/timing" }
