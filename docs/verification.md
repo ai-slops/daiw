@@ -2,7 +2,17 @@
 
 This file records evidence, not aspirations. The supplied design remains the product target; the current repository must not be described as having passed every stage-1 acceptance condition.
 
-## Latest follow-up: timing maps (2026-10-04)
+## Latest follow-up: nested note composition (2026-10-09)
+
+- Rust workspace tests **208 passed**, all-feature Clippy and formatting passed; host/API tests **50 passed**, client tests **68 passed**, strict TypeScript/Vite build passed. Existing upstream Zod annotation warnings remain non-blocking.
+- Regression coverage includes child/grandchild looping and cropping, DAG cycles/depth/shared paths, work/event budgets, stable nested IDs, flat native hash compatibility, source/local selection, one-occurrence patches, descendant binding/proposal staleness, and before/after dependency impact.
+- Independent code review led to fixes for missing closure guards, legacy revision overflow, stale proposal previews, request-wide work accounting, exact emitted-event counting and a stale flat AddNotes proposal collision. The collision regression rejects both stale preview and acceptance without changing HEAD.
+- `tests/nested-composition.test.mjs` drives real HTTP/Rust/SQLite: child source changes propagate to untouched notes and peer instances while a locally edited occurrence remains independent; native export/import and service restart preserve state; render produces nonzero PCM; cycles fail without HEAD change; removing a patched child is reported unready by dry-run.
+- A separate manual HTTP driver observed two scoped nested notes with root/leaf provenance, hashed nested effective IDs, agent apply rejection (403), cycle rejection, required native feature and a non-silent **13,165,760-byte WAV**. Its disposable data store was removed.
+- Real Chromium QA covered placement add/edit/navigation, own notes versus read-only ghosts, invalid-input draft retention, failed-save retry/cancel, and project-switch path reset. Lead independently drove blank-length rejection, corrected placement save, two ghosts and child source-only navigation against a freshly started isolated server. Independent responsive and error-state visual reviews passed. Review captures were ephemeral and some were cleaned afterward; this ledger records observed checks rather than promising retained artifacts.
+- Changed Rust/TypeScript diagnostics passed. CSS LSP remained unavailable; build and real-browser checks supplied CSS validation. No physical audio-device, Windows, performance-scale or full composition-graph qualification is claimed.
+
+## Timing maps (2026-10-04)
 
 - **176 Rust**, **49 host/API**, **57 client tests** passed; strict TypeScript/Vite build, Rust fmt and Clippy workspace/all-targets/all-features with warnings denied passed. Existing Zod annotation warnings remain non-blocking.
 - Regression coverage includes step/ramp integration and inversion, invalid public conversion inputs, exact meter boundaries, cross-runtime large-tick acceptance, native feature/hash compatibility, absolute mapped frame placement, and scalar waveform compatibility.
