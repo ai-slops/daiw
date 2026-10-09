@@ -1,24 +1,32 @@
 use crate::command::ChangeRequest;
-use crate::engine::apply_change;
 use crate::error::CoreError;
 use crate::fixture::create_project;
 use crate::project::Project;
 use crate::proposal_model::{Acceptance, Rejection};
-use crate::proposals::{accept_proposal, create_proposal, reject_proposal};
+use crate::proposals::reject_proposal;
 use crate::protocol::{FailureResponse, Request, Response, SuccessResponse};
 use crate::request_params::{
     AcceptParams, ChangeParams, CreateParams, ExplainParams, ImportParams, RejectParams,
     RestoreParams, SnapshotParams,
 };
-use crate::resolver::snapshot;
 use crate::revision::{advance, canonical_hash, require_revision};
 use crate::validation::validate_project;
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 
 pub fn dispatch(request: Request) -> Response {
+    let mut runtime = crate::worker_runtime::WorkerRuntime::with_cache_limits(
+        crate::composition_cache_metrics::CacheLimits::disabled(),
+    );
+    runtime.dispatch(request)
+}
+
+pub(crate) fn dispatch_with_session(
+    request: Request,
+    session: &mut crate::composition_cache::ResolutionSession<'_>,
+) -> Response {
     let id = request.id.clone();
-    match execute(request) {
+    match execute(request, session) {
         Ok((state, result)) => Response::Success(Box::new(SuccessResponse {
             id,
             ok: true,
@@ -33,7 +41,10 @@ pub fn dispatch(request: Request) -> Response {
     }
 }
 
-fn execute(request: Request) -> Result<(Project, Value), CoreError> {
+fn execute(
+    request: Request,
+    session: &mut crate::composition_cache::ResolutionSession<'_>,
+) -> Result<(Project, Value), CoreError> {
     if request.method == "project.create" || request.method == "project.import" {
         if request.principal != crate::protocol::Principal::Human {
             return Err(CoreError::PermissionDenied);
@@ -88,29 +99,42 @@ fn execute(request: Request) -> Result<(Project, Value), CoreError> {
         }
         "project.snapshot" => {
             let params: SnapshotParams = parse(request.params)?;
-            let rendered = snapshot(&project, params.proposal_id.as_ref())?;
+            let rendered = crate::resolver::snapshot_with_session(
+                &project,
+                params.proposal_id.as_ref(),
+                session,
+            )?;
             Ok((project, json!({ "snapshot": rendered })))
         }
         "project.queryNotes" => {
-            let selection = crate::note_selection::query_notes(&project, parse(request.params)?)?;
+            let selection = crate::note_selection::query_notes_with_session(
+                &project,
+                parse(request.params)?,
+                session,
+            )?;
             Ok((project, json!({ "selection": selection })))
         }
-        "project.explain" => explain(project, parse(request.params)?),
-        "change.dryRun" => dry_run(project, parse(request.params)?),
+        "project.explain" => explain(project, parse(request.params)?, session),
+        "change.dryRun" => dry_run(project, parse(request.params)?, session),
         "change.apply" => {
             let params: ChangeParams = parse(request.params)?;
-            let changed = apply_change(
+            let changed = crate::engine::apply_change_with_session(
                 &project,
                 request.principal,
                 ChangeRequest {
                     expected_revision: params.expected_revision,
                     command: params.command,
                 },
+                session,
             )?;
             Ok((changed.clone(), json!({ "revision": changed.revision })))
         }
         "proposal.create" => {
-            let proposal = create_proposal(&project, parse(request.params)?)?;
+            let proposal = crate::proposals::create_proposal_with_session(
+                &project,
+                parse(request.params)?,
+                session,
+            )?;
             let mut changed = project;
             changed.proposals.push(proposal.clone());
             let author = match request.principal {
@@ -122,7 +146,7 @@ fn execute(request: Request) -> Result<(Project, Value), CoreError> {
         }
         "proposal.accept" => {
             let params: AcceptParams = parse(request.params)?;
-            let outcome = accept_proposal(
+            let outcome = crate::proposals::accept_proposal_with_session(
                 &project,
                 request.principal,
                 Acceptance {
@@ -130,6 +154,7 @@ fn execute(request: Request) -> Result<(Project, Value), CoreError> {
                     proposal_id: params.proposal_id.clone(),
                     hunk_ids: params.hunk_ids,
                 },
+                session,
             )?;
             let result = json!({
                 "proposalId": params.proposal_id,
@@ -162,13 +187,23 @@ fn execute(request: Request) -> Result<(Project, Value), CoreError> {
     }
 }
 
-fn dry_run(project: Project, params: ChangeParams) -> Result<(Project, Value), CoreError> {
-    let result = serde_json::to_value(crate::dry_run::inspect(&project, params))
-        .map_err(|error| CoreError::Serialization(error.to_string()))?;
+fn dry_run(
+    project: Project,
+    params: ChangeParams,
+    session: &mut crate::composition_cache::ResolutionSession<'_>,
+) -> Result<(Project, Value), CoreError> {
+    let result = serde_json::to_value(crate::dry_run::inspect_with_session(
+        &project, params, session,
+    ))
+    .map_err(|error| CoreError::Serialization(error.to_string()))?;
     Ok((project, result))
 }
 
-fn explain(project: Project, params: ExplainParams) -> Result<(Project, Value), CoreError> {
+fn explain(
+    project: Project,
+    params: ExplainParams,
+    session: &mut crate::composition_cache::ResolutionSession<'_>,
+) -> Result<(Project, Value), CoreError> {
     let instance = project
         .instances
         .iter()
@@ -185,7 +220,7 @@ fn explain(project: Project, params: ExplainParams) -> Result<(Project, Value), 
         .filter_map(|id| project.modifiers.iter().find(|modifier| modifier.id == *id))
         .collect();
     let (effective_notes, composition_notes) =
-        crate::resolver::explain_notes(&project, &instance.id)?;
+        crate::resolver::explain_notes_with_session(&project, &instance.id, session)?;
     let unbound = crate::binding_validation::unbound_modifier_ids(&project, instance);
     let modifier_plan = crate::modifier_plan::explain(&project, instance)?;
     let result = json!({ "revision": project.revision, "instanceId": instance.id, "instance": instance, "definition": definition, "compositionNotes": composition_notes, "effectiveNotes": effective_notes, "modifiers": modifiers, "overrides": instance.overrides, "unboundModifierIds": unbound, "modifierPlan": modifier_plan });

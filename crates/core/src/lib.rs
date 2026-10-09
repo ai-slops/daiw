@@ -2,6 +2,14 @@ mod binding_validation;
 mod change_impact;
 mod cli;
 mod command;
+mod composition_cache;
+mod composition_cache_metrics;
+#[cfg(test)]
+mod composition_cache_tests;
+mod composition_key;
+mod composition_memory;
+#[cfg(test)]
+mod composition_replay_tests;
 mod definition_composition;
 mod definition_graph;
 mod definition_mutation;
@@ -19,6 +27,7 @@ mod modifier_binding;
 mod modifier_plan;
 mod music;
 mod mutation;
+mod mutation_helpers;
 mod native_features;
 mod native_format;
 mod native_loss;
@@ -36,6 +45,7 @@ mod pattern_growth;
 mod pattern_resolution;
 mod project;
 mod proposal_adapter;
+mod proposal_creation;
 mod proposal_model;
 mod proposal_preview;
 mod proposal_rebase;
@@ -51,9 +61,11 @@ mod time;
 mod timing_mutation;
 mod track_resolution;
 mod validation;
+mod worker_runtime;
 
 pub use cli::run as run_cli;
 pub use command::{ChangeRequest, Command, EditScope};
+pub use composition_cache_metrics::{CacheCounters, CacheLimits, CacheResident, CacheStats};
 pub use daiw_timing::{
     Beat, Curve, MAX_BEATS, MAX_TICKS, MeterMap, MeterPoint, TICKS_PER_BEAT, TempoMap, TempoPoint,
     Tick, TimingError,
@@ -79,3 +91,4 @@ pub use resolver::snapshot;
 pub use revision::{canonical_hash, musical_fingerprint};
 pub use selected_note_edit::NoteTransform;
 pub use validation::validate_project;
+pub use worker_runtime::WorkerRuntime;
