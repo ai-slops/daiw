@@ -1,6 +1,6 @@
 use crate::change_impact::{ChangeImpact, analyze};
 use crate::command::Command;
-use crate::engine::{affected_instances, preview_change};
+use crate::engine::affected_instances;
 use crate::ids::InstanceId;
 use crate::project::Project;
 use crate::protocol::{Diagnostic, Severity};
@@ -26,9 +26,18 @@ struct CommandHunk {
     command: Command,
 }
 
-pub fn inspect(project: &Project, params: ChangeParams) -> DryRunResult {
+pub(crate) fn inspect_with_session(
+    project: &Project,
+    params: ChangeParams,
+    session: &mut crate::composition_cache::ResolutionSession<'_>,
+) -> DryRunResult {
     let requested = affected_instances(project, &params.command);
-    match preview_change(project, &params.expected_revision, params.command.clone()) {
+    match crate::engine::preview_change_with_session(
+        project,
+        &params.expected_revision,
+        params.command.clone(),
+        session,
+    ) {
         Ok(candidate) => {
             let mut work = crate::definition_composition::WorkMeter::new();
             let (affected, impact) = analyze(project, &candidate, &requested);
@@ -36,8 +45,8 @@ pub fn inspect(project: &Project, params: ChangeParams) -> DryRunResult {
             let instances = affected
                 .iter()
                 .map(|id| {
-                    let before = check(project, id, &mut work);
-                    let after = check(&candidate, id, &mut work);
+                    let before = check(project, id, &mut work, session);
+                    let after = check(&candidate, id, &mut work, session);
                     if let InstanceCheck::Conflict { diagnostic, .. } = &after {
                         diagnostics.push(diagnostic.clone());
                     }

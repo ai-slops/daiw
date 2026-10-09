@@ -1,7 +1,6 @@
 use crate::command::{ChangeRequest, Command, EditScope};
 use crate::error::CoreError;
 use crate::ids::{InstanceId, Revision};
-use crate::mutation::apply_command;
 use crate::project::Project;
 use crate::protocol::Principal;
 use crate::revision::{advance, require_revision};
@@ -12,12 +11,28 @@ pub fn apply_change(
     principal: Principal,
     request: ChangeRequest,
 ) -> Result<Project, CoreError> {
+    let mut cache = crate::composition_cache::uncached_session();
+    apply_change_with_session(
+        project,
+        principal,
+        request,
+        &mut crate::composition_cache::ResolutionSession::new(&mut cache),
+    )
+}
+
+pub(crate) fn apply_change_with_session(
+    project: &Project,
+    principal: Principal,
+    request: ChangeRequest,
+    session: &mut crate::composition_cache::ResolutionSession<'_>,
+) -> Result<Project, CoreError> {
     if principal != Principal::Human {
         return Err(CoreError::PermissionDenied);
     }
     require_revision(project, &request.expected_revision)?;
     let mut changed = project.clone();
-    let message = apply_command(&mut changed, request.command)?;
+    let message =
+        crate::mutation::apply_command_with_session(&mut changed, request.command, session)?;
     validate_project(&changed)?;
     advance(changed, "human", &message)
 }
@@ -27,9 +42,24 @@ pub fn preview_change(
     expected: &Revision,
     command: Command,
 ) -> Result<Project, CoreError> {
+    let mut cache = crate::composition_cache::uncached_session();
+    preview_change_with_session(
+        project,
+        expected,
+        command,
+        &mut crate::composition_cache::ResolutionSession::new(&mut cache),
+    )
+}
+
+pub(crate) fn preview_change_with_session(
+    project: &Project,
+    expected: &Revision,
+    command: Command,
+    session: &mut crate::composition_cache::ResolutionSession<'_>,
+) -> Result<Project, CoreError> {
     require_revision(project, expected)?;
     let mut changed = project.clone();
-    apply_command(&mut changed, command)?;
+    crate::mutation::apply_command_with_session(&mut changed, command, session)?;
     validate_project(&changed)?;
     Ok(changed)
 }

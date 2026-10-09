@@ -1,12 +1,16 @@
 use crate::command::Command;
 use crate::error::CoreError;
 use crate::ids::{DefinitionId, InstanceId, ModifierId, TrackId};
-use crate::instance_mutation::{apply_modifier, edit_notes, find_instance_mut, rebase_modifier};
+use crate::instance_mutation::find_instance_mut;
 use crate::music::{Definition, Instance, Modifier, Track};
 use crate::project::Project;
 use crate::validation::{validate_notes, validate_operations};
 
-pub fn apply_command(project: &mut Project, command: Command) -> Result<String, CoreError> {
+pub(crate) fn apply_command_with_session(
+    project: &mut Project,
+    command: Command,
+    session: &mut crate::composition_cache::ResolutionSession<'_>,
+) -> Result<String, CoreError> {
     match command {
         Command::SetTempo { tempo } => crate::timing_mutation::set_tempo(project, tempo),
         Command::SetTempoMap { tempo_map } => {
@@ -159,36 +163,26 @@ pub fn apply_command(project: &mut Project, command: Command) -> Result<String, 
             Ok("Moved instance".to_owned())
         }
         Command::DuplicateInstance { instance_id } => {
-            let mut duplicate = project
-                .instances
-                .iter()
-                .find(|instance| instance.id == instance_id)
-                .cloned()
-                .ok_or_else(|| CoreError::NotFound(instance_id.to_string()))?;
-            duplicate.id = InstanceId::new_random();
-            duplicate.name = format!("{} Copy", duplicate.name);
-            duplicate.start = duplicate.start + duplicate.length;
-            project.instances.push(duplicate);
-            Ok("Duplicated instance".to_owned())
+            crate::mutation_helpers::duplicate_instance(project, &instance_id)
         }
         Command::DeleteInstance { instance_id } => {
-            let position = project
-                .instances
-                .iter()
-                .position(|instance| instance.id == instance_id)
-                .ok_or_else(|| CoreError::NotFound(instance_id.to_string()))?;
-            project.instances.remove(position);
-            Ok("Deleted instance".to_owned())
+            crate::mutation_helpers::delete_instance(project, &instance_id)
         }
         Command::EditNotes {
             instance_id,
             scope,
             notes,
-        } => edit_notes(project, instance_id, scope, notes),
+        } => crate::instance_mutation::edit_notes_with_session(
+            project,
+            instance_id,
+            scope,
+            notes,
+            session,
+        ),
         Command::TransformSelectedNotes {
             selection,
             transform,
-        } => crate::selected_note_edit::apply(project, selection, transform),
+        } => crate::selected_note_edit::apply_with_session(project, selection, transform, session),
         Command::ApplyModifier {
             instance_id,
             modifier_id,
@@ -203,7 +197,12 @@ pub fn apply_command(project: &mut Project, command: Command) -> Result<String, 
                     "use setModifierOrdering for an existing attachment".into(),
                 ));
             }
-            let message = apply_modifier(project, instance_id.clone(), modifier_id)?;
+            let message = crate::instance_mutation::apply_modifier_with_session(
+                project,
+                instance_id.clone(),
+                modifier_id,
+                session,
+            )?;
             if let Some(mut ordering) = ordering {
                 ordering.edges.sort();
                 find_instance_mut(project, &instance_id)?.modifier_ordering = Some(ordering);
@@ -221,21 +220,16 @@ pub fn apply_command(project: &mut Project, command: Command) -> Result<String, 
         Command::RebaseModifier {
             instance_id,
             modifier_id,
-        } => rebase_modifier(project, instance_id, modifier_id),
+        } => crate::instance_mutation::rebase_modifier_with_session(
+            project,
+            instance_id,
+            modifier_id,
+            session,
+        ),
         Command::RemoveModifier {
             instance_id,
             modifier_id,
-        } => {
-            let instance = find_instance_mut(project, &instance_id)?;
-            instance.modifiers.retain(|id| *id != modifier_id);
-            instance.modifier_bindings.remove(&modifier_id);
-            if let Some(ordering) = &mut instance.modifier_ordering {
-                ordering
-                    .edges
-                    .retain(|edge| edge.before != modifier_id && edge.after != modifier_id);
-            }
-            Ok("Removed modifier".to_owned())
-        }
+        } => crate::mutation_helpers::remove_modifier(project, &instance_id, &modifier_id),
         Command::CreateModifier { name, operations } => {
             validate_operations(&operations)?;
             project.modifiers.push(Modifier {
@@ -246,31 +240,10 @@ pub fn apply_command(project: &mut Project, command: Command) -> Result<String, 
             Ok("Created modifier".to_owned())
         }
         Command::AddAudioRegion { asset, region } => {
-            if let Some(existing) = project
-                .assets
-                .iter()
-                .find(|existing| existing.id == asset.id)
-            {
-                if existing != &asset {
-                    return Err(CoreError::InvalidProject(format!(
-                        "asset {} metadata conflicts with its content address",
-                        asset.id
-                    )));
-                }
-            } else {
-                project.assets.push(asset);
-            }
-            project.regions.push(region);
-            Ok("Added audio region".to_owned())
+            crate::mutation_helpers::add_audio_region(project, asset, region)
         }
         Command::RemoveAudioRegion { region_id } => {
-            let position = project
-                .regions
-                .iter()
-                .position(|region| region.id == region_id)
-                .ok_or_else(|| CoreError::NotFound(region_id.to_string()))?;
-            project.regions.remove(position);
-            Ok("Removed audio region".to_owned())
+            crate::mutation_helpers::remove_audio_region(project, &region_id)
         }
     }
 }
