@@ -6,6 +6,8 @@ Completed: identity-based instance note patches, scoped dry-run note-target/impa
 
 ## Stage 0: Headless domain foundation
 
+Nested-note follow-up completed: child placements, bounded DAG resolution, stable nested IDs/provenance, source/local editing, descendant binding guards and composition UI. Next work remains broader selector/application policies and incremental compilation/streaming; part/lane bindings, nested routing and flow graphs are not implied by this subset. See [composition.md](composition.md).
+
 Timing follow-up completed: validated step/linear tempo maps, independent meter maps, forward/inverse conversion, mapped render/seek/loop and a usable point editor. Next structural work is nested composition and broader selector/application policies; incremental compilation and streaming follow. See [timing.md](timing.md) for implemented scope and exclusions.
 
 Follow-up completed: versioned native exchange/required-feature rejection, UI file import, and a bounded nonrecursive SelectionHandle subset with source/local transpose and velocity transforms. Next work is broader selector/application policies, tempo/meter maps and nested composition, followed by incremental compilation/streaming. Storage hardening still includes decoded-cache authentication, portable media archives and explicit migrations. See [the current exchange contract](native-exchange.md); do not downgrade by stripping the envelope or feature metadata.
