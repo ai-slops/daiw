@@ -1,6 +1,10 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
+pub(crate) trait RetainedCapacity {
+    fn retained_capacity(&self) -> usize;
+}
+
 macro_rules! string_id {
     ($name:ident) => {
         #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize)]
@@ -54,6 +58,12 @@ macro_rules! string_id {
 
             fn deref(&self) -> &Self::Target {
                 &self.0
+            }
+        }
+
+        impl RetainedCapacity for $name {
+            fn retained_capacity(&self) -> usize {
+                self.0.capacity()
             }
         }
     };
