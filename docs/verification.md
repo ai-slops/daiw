@@ -2,7 +2,16 @@
 
 This file records evidence, not aspirations. The supplied design remains the product target; the current repository must not be described as having passed every stage-1 acceptance condition.
 
-## Latest follow-up: nested note composition (2026-10-09)
+## Latest follow-up: incremental source composition (2026-10-09)
+
+- **230 Rust**, **52 host/API**, **71 client tests** passed. Rust fmt, all-feature workspace/all-target Clippy, worker rebuild and strict TypeScript/Vite production build passed. Changed Rust/TypeScript/MJS diagnostics were clean. Existing upstream Zod annotation warnings remain non-blocking.
+- Full disabled/cold/warm response comparisons cover snapshot, explain, note selection, dry-run and stale guards. Key tests cover same-revision content changes, descendant provenance, excluded metadata, reordered children versus flat note order and project isolation. Resource tests cover aggregate bounds, LRU eviction, oversized skips and exact work-error replay.
+- Independent review caught replay divergence after an already-exceeded work meter, incomplete backing-storage accounting and mixed-size admission dropping a fitting candidate after eviction. Each was fixed with a failing-then-passing regression. Retention now explicitly counts owned capacities, not allocator metadata or process RSS.
+- Independent live HTTP sequence: cold snapshot **4 misses / 2 hits / 20 expanded units**; warm snapshot **0 misses / 6 hits / 0 expanded units**, with identical snapshot. A child edit produced **2 misses / 4 hits / 13 expanded units** and changed audible output. Residency then measured 6 entries, 27 notes, 8 path entries and 5,867 accounted bytes.
+- The stats query preserved state and its own last-request counters; agents received 403. Service restart cleared cache residency. After deleting rebuildable render files, the regenerated WAV exactly matched the prior edited WAV: **13,165,760 bytes**, SHA-256 `015ad9ff966931ae2e180618e61c290f1b7308985379d0509ac7c81a4462ac2c`. The manual driver's disposable store was removed.
+- No UI changed, so browser/visual checks were not repeated. No elapsed-time speedup, long-session benchmark, physical-device or Windows certification is claimed. This is source-pattern reuse only; operations, effective events and DSP are still recomputed.
+
+## Nested note composition (2026-10-09)
 
 - Rust workspace tests **208 passed**, all-feature Clippy and formatting passed; host/API tests **50 passed**, client tests **68 passed**, strict TypeScript/Vite build passed. Existing upstream Zod annotation warnings remain non-blocking.
 - Regression coverage includes child/grandchild looping and cropping, DAG cycles/depth/shared paths, work/event budgets, stable nested IDs, flat native hash compatibility, source/local selection, one-occurrence patches, descendant binding/proposal staleness, and before/after dependency impact.

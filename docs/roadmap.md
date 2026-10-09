@@ -6,6 +6,8 @@ Completed: identity-based instance note patches, scoped dry-run note-target/impa
 
 ## Stage 0: Headless domain foundation
 
+Incremental-resolution follow-up completed: worker-local source-composition reuse, content-based dependency invalidation, deterministic bounded LRU and human-only cache diagnostics. Remaining incremental work includes operation/instance-level reuse, signal compilation, streaming and measured large-session budgets. See [incremental-resolution.md](incremental-resolution.md).
+
 Nested-note follow-up completed: child placements, bounded DAG resolution, stable nested IDs/provenance, source/local editing, descendant binding guards and composition UI. Next work remains broader selector/application policies and incremental compilation/streaming; part/lane bindings, nested routing and flow graphs are not implied by this subset. See [composition.md](composition.md).
 
 Timing follow-up completed: validated step/linear tempo maps, independent meter maps, forward/inverse conversion, mapped render/seek/loop and a usable point editor. Next structural work is nested composition and broader selector/application policies; incremental compilation and streaming follow. See [timing.md](timing.md) for implemented scope and exclusions.
