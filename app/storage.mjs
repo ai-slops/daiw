@@ -16,7 +16,16 @@ export class ProjectStore {
       CREATE TABLE IF NOT EXISTS journal (sequence INTEGER PRIMARY KEY, project_id TEXT NOT NULL, request_id TEXT NOT NULL, request_hash TEXT NOT NULL, method TEXT NOT NULL, principal TEXT NOT NULL, base_revision TEXT, revision TEXT NOT NULL, response TEXT NOT NULL, created_at TEXT NOT NULL, UNIQUE(project_id,request_id));
       CREATE TABLE IF NOT EXISTS undo_stack (project_id TEXT PRIMARY KEY, undo TEXT NOT NULL DEFAULT '[]', redo TEXT NOT NULL DEFAULT '[]');
       CREATE TABLE IF NOT EXISTS assets (id TEXT PRIMARY KEY, hash TEXT NOT NULL, name TEXT NOT NULL, metadata TEXT NOT NULL);
-      CREATE TABLE IF NOT EXISTS renders (key TEXT PRIMARY KEY, project_id TEXT NOT NULL, revision TEXT NOT NULL, profile TEXT NOT NULL, created_at TEXT NOT NULL);
+       CREATE TABLE IF NOT EXISTS renders (key TEXT PRIMARY KEY, project_id TEXT NOT NULL, revision TEXT NOT NULL, profile TEXT NOT NULL, created_at TEXT NOT NULL);
+       CREATE TABLE IF NOT EXISTS render_cache_files (
+         key TEXT PRIMARY KEY,
+         format TEXT NOT NULL,
+         sample_rate INTEGER NOT NULL,
+         channels INTEGER NOT NULL,
+         frames INTEGER NOT NULL,
+         byte_length INTEGER NOT NULL,
+         sha256 TEXT NOT NULL
+       );
       CREATE TABLE IF NOT EXISTS decoded_audio_cache (
         source_hash TEXT NOT NULL,
         renderer_fingerprint TEXT NOT NULL,
