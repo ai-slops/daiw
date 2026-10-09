@@ -2,7 +2,16 @@
 
 This file records evidence, not aspirations. The supplied design remains the product target; the current repository must not be described as having passed every stage-1 acceptance condition.
 
-## Latest follow-up: incremental source composition (2026-10-09)
+## Latest follow-up: incremental instance patterns (2026-10-09)
+
+- **242 Rust**, **56 host/API**, **71 client tests** passed. Worker rebuild, Rust formatting, all-feature workspace/all-target Clippy and strict TypeScript/Vite build passed. Changed Rust/MJS diagnostics were clean; upstream Zod annotation warnings remain non-blocking.
+- New tests cover exact post-modifier work-trace replay, disabled/cold/warm equivalence, proposal isolation, stale guards, downstream placement/crop/track changes, slot invalidation, provenance and memory/admission bounds. Existing source-cache regressions remain green after extraction of shared LRU storage.
+- Independent review caught an error-precedence change and unnecessary deep-copy/admission work. The previous operation-validation → track → event-budget → pattern sequence was restored and regression-tested. Cold resolution moves owned payloads; oversized entries are checked before retained copying. A final lifetime-only adjustment drops the unused composed vector before cloning a cached pattern, followed by targeted tests and diagnostics.
+- Live HTTP results for a modified fixture: cold instance resolution **6 misses / 0 hits / 4 operation-work units**; warm **0 misses / 6 hits / 0 units**. Moving the clip retained all six hits with correctly shifted notes. Local transposition yielded **1 miss / 5 hits / 12 units**, with updated target pitches.
+- Diagnostic reads left both counter groups intact, and agent diagnostics returned 403. Restart cleared both caches. After removing render files, the edited snapshot and regenerated **13,165,760-byte WAV** remained identical; SHA-256 `c17921a958fd26925701e0d434242a3b697bf5f62351dbdf85b37870c065415d`. The disposable store was removed.
+- UI unchanged; no browser/visual run was needed. No elapsed-time speedup, full DSP incremental compilation, streaming, physical-device or Windows qualification is claimed.
+
+## Incremental source composition (2026-10-09)
 
 - **230 Rust**, **52 host/API**, **71 client tests** passed. Rust fmt, all-feature workspace/all-target Clippy, worker rebuild and strict TypeScript/Vite production build passed. Changed Rust/TypeScript/MJS diagnostics were clean. Existing upstream Zod annotation warnings remain non-blocking.
 - Full disabled/cold/warm response comparisons cover snapshot, explain, note selection, dry-run and stale guards. Key tests cover same-revision content changes, descendant provenance, excluded metadata, reordered children versus flat note order and project isolation. Resource tests cover aggregate bounds, LRU eviction, oversized skips and exact work-error replay.
