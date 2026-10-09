@@ -1,8 +1,9 @@
 use std::f64::consts::TAU;
 
 use crate::render_clock::{RenderClock, checked_frame_index, silent_buffer};
-use crate::validate::{finite, finite_samples, positive, validate_request};
-use crate::{AudioError, EffectiveNote, Instrument, PcmAsset, RenderRequest, RenderedAudio, Track};
+use crate::source::{ResidentSourceBank, SourceBank};
+use crate::validate::{finite, finite_samples, positive, validate_request, validate_snapshot};
+use crate::{AudioError, EffectiveNote, Instrument, RenderRequest, RenderedAudio, Snapshot, Track};
 
 pub const DEFAULT_SAMPLE_RATE: u32 = 48_000;
 
@@ -15,15 +16,32 @@ pub fn render_with_sample_rate(
     sample_rate: u32,
 ) -> Result<RenderedAudio, AudioError> {
     validate_request(request, sample_rate)?;
-    let clock = RenderClock::new(&request.snapshot, sample_rate)?;
+    let mut sources = ResidentSourceBank::new(&request.assets);
+    render_from_sources(&request.snapshot, &mut sources, sample_rate)
+}
+
+pub(crate) fn render_file_sources(
+    snapshot: &Snapshot,
+    sources: &mut impl SourceBank,
+) -> Result<RenderedAudio, AudioError> {
+    validate_snapshot(snapshot, DEFAULT_SAMPLE_RATE)?;
+    render_from_sources(snapshot, sources, DEFAULT_SAMPLE_RATE)
+}
+
+fn render_from_sources(
+    snapshot: &Snapshot,
+    sources: &mut impl SourceBank,
+    sample_rate: u32,
+) -> Result<RenderedAudio, AudioError> {
+    let clock = RenderClock::new(snapshot, sample_rate)?;
     let samples = clock
         .total_frames
         .checked_mul(2)
         .ok_or(AudioError::InvalidFrameCount)?;
     let mut master = silent_buffer(samples)?;
     let mut stereo = Vec::new();
-    let soloed = request.snapshot.tracks.iter().any(|track| track.solo);
-    for track in &request.snapshot.tracks {
+    let soloed = snapshot.tracks.iter().any(|track| track.solo);
+    for track in &snapshot.tracks {
         if clock.total_frames == 0 || track.mute || (soloed && !track.solo) {
             continue;
         }
@@ -32,28 +50,19 @@ pub fn render_with_sample_rate(
         } else {
             stereo.fill(0.0);
         }
-        for note in request
-            .snapshot
+        for note in snapshot
             .notes
             .iter()
             .filter(|note| note.track_id == track.id)
         {
             render_note(&mut stereo, note, track.instrument, &clock)?;
         }
-        for region in request
-            .snapshot
+        for region in snapshot
             .regions
             .iter()
             .filter(|region| region.track_id == track.id)
         {
-            let asset =
-                request
-                    .assets
-                    .get(&region.asset_id)
-                    .ok_or_else(|| AudioError::MissingAsset {
-                        asset_id: region.asset_id.clone(),
-                    })?;
-            render_region(&mut stereo, region, asset, &clock)?;
+            render_region(&mut stereo, region, sources, &clock)?;
         }
         lowpass(&mut stereo, track.cutoff, sample_rate);
         finite_samples(&stereo, &track.id)?;
@@ -149,7 +158,7 @@ fn noise(seed: u64) -> f64 {
 fn render_region(
     output: &mut [f32],
     region: &crate::AudioRegion,
-    asset: &PcmAsset,
+    sources: &mut impl SourceBank,
     clock: &RenderClock,
 ) -> Result<(), AudioError> {
     let start = clock.frame_at(region.start)?;
@@ -162,39 +171,37 @@ fn render_region(
     if duration == 0 {
         return Ok(());
     }
-    let source_start = checked_frame_index(
-        (region.source_offset.max(0.0) * f64::from(asset.sample_rate)).round(),
-    )?;
-    let channel_count = usize::from(asset.channels);
-    let source_frames = asset.samples.len() / channel_count;
-    if source_start >= source_frames {
+    let metadata = sources.metadata(&region.asset_id)?;
+    let source_start = u64::try_from(checked_frame_index(
+        (region.source_offset.max(0.0) * f64::from(metadata.sample_rate)).round(),
+    )?)?;
+    if source_start >= metadata.frames {
         return Ok(());
     }
-    let remaining =
-        u64::try_from(source_frames - source_start).map_err(|_| AudioError::InvalidFrameCount)?;
+    let remaining = metadata.frames - source_start;
+    let gain = 10.0_f32.powf(region.gain as f32 / 20.0);
+    let mut frame = [0.0_f32; 8];
     for target_offset in 0..duration {
         let offset = u64::try_from(target_offset).map_err(|_| AudioError::InvalidFrameCount)?;
         let source_offset = offset
-            .checked_mul(u64::from(asset.sample_rate))
+            .checked_mul(u64::from(metadata.sample_rate))
             .ok_or(AudioError::InvalidFrameCount)?
             / u64::from(clock.sample_rate);
         if source_offset >= remaining {
             break;
         }
         let source_frame = source_start
-            + usize::try_from(source_offset).map_err(|_| AudioError::InvalidFrameCount)?;
-        let source = source_frame * channel_count;
-        let frame = asset.samples.get(source..source + channel_count);
-        if let Some(channels) = frame {
-            let gain = 10.0_f32.powf(region.gain as f32 / 20.0);
-            let target_sample = (start + target_offset) * 2;
-            if channels.len() == 1 {
-                output[target_sample] += channels[0] * gain;
-                output[target_sample + 1] += channels[0] * gain;
-            } else {
-                output[target_sample] += channels[0] * gain;
-                output[target_sample + 1] += channels[1] * gain;
-            }
+            .checked_add(source_offset)
+            .ok_or(AudioError::InvalidFrameCount)?;
+        if !sources.read_frame(&region.asset_id, source_frame, &mut frame)? {
+            return Err(AudioError::InvalidPcmLength);
+        }
+        let target_sample = (start + target_offset) * 2;
+        output[target_sample] += frame[0] * gain;
+        if metadata.channels == 1 {
+            output[target_sample + 1] += frame[0] * gain;
+        } else {
+            output[target_sample + 1] += frame[1] * gain;
         }
     }
     Ok(())
