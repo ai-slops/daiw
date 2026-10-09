@@ -22,12 +22,12 @@ type TimingDialogProps = {
 	readonly onClose: () => void;
 	readonly onTempoMap: (
 		tempoMap: NonNullable<Project["tempoMap"]>,
-	) => Promise<void>;
+	) => Promise<unknown>;
 	readonly onMeterMap: (
 		meterMap: NonNullable<Project["meterMap"]>,
-	) => Promise<void>;
-	readonly onTempo: (tempo: number) => Promise<void>;
-	readonly onMeter: (meter: Project["meter"]) => Promise<void>;
+	) => Promise<unknown>;
+	readonly onTempo: (tempo: number) => Promise<unknown>;
+	readonly onMeter: (meter: Project["meter"]) => Promise<unknown>;
 };
 
 export const TimingDialog = ({
@@ -70,7 +70,7 @@ export const TimingDialog = ({
 	}, [busy, error, project.revision]);
 
 	const saving = busy || saveState.kind === "pending";
-	const save = (job: () => Promise<void>) => {
+	const save = (job: () => Promise<unknown>) => {
 		if (saving) return;
 		setSaveState(beginTimingSave(project.revision));
 		void job();

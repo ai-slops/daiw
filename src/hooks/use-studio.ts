@@ -104,9 +104,9 @@ export const useStudio = () => {
 	}, [createProject, openProject, run]);
 
 	const command = useCallback(
-		async (value: Readonly<Record<string, unknown>>, preview = false) => {
+		async (value: Readonly<Record<string, unknown>>, preview = false): Promise<boolean> => {
 			const project = state.project;
-			if (project === undefined) return;
+			if (project === undefined) return false;
 			const method = preview ? "change.dryRun" : "change.apply";
 			const schema = preview ? DryRunResultSchema : EmptyResultSchema;
 			const response = await run(() =>
@@ -121,15 +121,16 @@ export const useStudio = () => {
 					schema,
 				),
 			);
-			if (response === undefined) return;
+			if (response === undefined) return false;
 			if (preview) {
 				setState((current) => ({
 					...current,
 					dryRun: DryRunResultSchema.parse(response.result),
 				}));
-				return;
+				return true;
 			}
 			commitProject(response.state);
+			return true;
 		},
 		[commitProject, run, state.project],
 	);
