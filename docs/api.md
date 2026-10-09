@@ -92,7 +92,7 @@ The Rust renderer additionally caps output at 8,640,000 stereo frames (180 secon
 
 ## Storage configuration
 
-`project.cacheStats` is an authenticated, human-only read-only query for the current worker's composition-cache limits, residency and counters. It does not alter HEAD or the command journal and is not available through the agent allowlist. Read it immediately after the request being measured. See [incremental-resolution.md](incremental-resolution.md) for its exact shape and worker-wide scope.
+`project.cacheStats` and `project.instanceCacheStats` are authenticated, human-only read-only queries for the worker's source-composition and post-modifier instance-pattern caches respectively. Neither alters HEAD, the command journal or the other cache's diagnostics, and neither is available through the agent allowlist. Read them immediately after the request being measured. See [source-cache diagnostics](incremental-resolution.md) and [instance-cache diagnostics](instance-resolution.md) for their shared shape and worker-wide scope.
 
 | Variable | Default | Meaning |
 |---|---|---|

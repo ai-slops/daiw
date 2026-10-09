@@ -2,7 +2,7 @@
 
 The persistent JSON-lines core worker now reuses successfully composed source patterns across requests. The cache is owned by `WorkerRuntime`, not by a Project, the host database, global state, or an audio callback. Canonical full project state still comes from the host on every request. Restarting the worker discards all entries and counters without changing musical results.
 
-This is the first incremental-resolution layer. It does **not** cache modifier execution, instance repetition, final snapshots, track routing, DSP compilation or audio. Existing renderer-file caching is separate. Hashing dependencies, copying cached notes, checking bindings and applying operations still incur work; cache hit counts are not a measured end-to-end speedup claim.
+This is the first incremental-resolution layer. A separate [instance-pattern cache](instance-resolution.md) now reuses post-modifier patterns. Neither layer caches instance repetition, final snapshots, track routing, DSP compilation or audio. Existing renderer-file caching is separate. Hashing dependencies, copying cached notes and checking bindings still incur work; cache hit counts are not a measured end-to-end speedup claim.
 
 ## Key and invalidation
 
@@ -58,4 +58,4 @@ Differential tests compare full disabled/cold/warm responses for snapshots, expl
 
 Live HTTP checks observed a nested fixture's warm snapshot using six hits with zero physical expansion. Editing a child produced two misses while four unrelated/repeated roots reused cached results. Restart reset residency; the snapshot and freshly regenerated WAV were identical to their pre-restart versions. See [verification.md](verification.md) for counts and evidence.
 
-Per-instance operation/snapshot reuse, sub-definition incremental compilation, signal scheduling, disk streaming, long-session profiling and native-device qualification remain outstanding. This layer requires no new native format feature because it does not change persisted musical meaning.
+Post-modifier per-instance pattern reuse is now implemented separately. Final-event/snapshot reuse, sub-definition incremental compilation, signal scheduling, disk streaming, long-session profiling and native-device qualification remain outstanding. Neither cache requires a new native format feature because persisted musical meaning is unchanged.

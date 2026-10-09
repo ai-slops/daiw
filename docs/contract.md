@@ -4,6 +4,8 @@ All JSON fields use camelCase. Rust is the sole canonical domain authority. Node
 
 The long-lived worker owns a bounded source-composition cache. Cache contents are derived and process-local; full state remains supplied per request. Human-only `project.cacheStats` exposes noncanonical diagnostics. [Incremental-resolution semantics](incremental-resolution.md) define invalidation, logical budget replay, retention accounting and the stateless-library fallback.
 
+A second bounded [instance-pattern cache](instance-resolution.md) reuses post-modifier notes before placement/cropping. Human-only `project.instanceCacheStats` reports it separately without changing the original source diagnostics. Current binding/order/permission checks and final output validation are never cached.
+
 Native interchange uses a separate versioned envelope, not worker `state`. See [native exchange and bounded selection contracts](native-exchange.md) for required features, typed-content hashing, compatibility rejection, `SelectionHandle`, and `transformSelectedNotes` semantics.
 
 ## Domain wire types
