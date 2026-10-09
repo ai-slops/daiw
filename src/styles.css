@@ -88,6 +88,7 @@ button,
 button:focus-visible,
 input:focus-visible,
 textarea:focus-visible,
+select:focus-visible,
 audio:focus-visible {
 	outline: 2px solid var(--amber-2);
 	outline-offset: 2px;
@@ -893,6 +894,20 @@ audio:focus-visible {
 	stroke: var(--amber-2);
 	vector-effect: non-scaling-stroke;
 }
+.midi-note--ghost {
+	fill: color-mix(in srgb, var(--blue) 22%, transparent);
+	stroke: var(--blue);
+	stroke-dasharray: 4 3;
+	opacity: 0.8;
+}
+.source-only-badge {
+	padding: var(--s1) var(--s2);
+	border: 1px solid var(--line-1);
+	border-radius: var(--r1);
+	color: var(--blue);
+	font: var(--type-micro) / 1.2 var(--font-mono);
+	text-transform: uppercase;
+}
 .editor-footer {
 	display: flex;
 	justify-content: space-between;
@@ -954,6 +969,142 @@ audio:focus-visible {
 	display: flex;
 	justify-content: space-between;
 	margin-block-end: var(--s2);
+}
+.composition-section {
+	display: grid;
+	gap: var(--s2);
+	padding-block: var(--s3);
+	border-block: 1px solid var(--line-2);
+}
+.composition-section .section-label {
+	margin: 0;
+}
+.composition-section small,
+.composition-validation,
+.composition-context {
+	color: var(--text-3);
+	font-size: var(--type-micro);
+}
+.composition-context,
+.composition-validation,
+.composition-status,
+.composition-error {
+	margin: 0;
+}
+.composition-context strong {
+	color: var(--text-2);
+}
+.composition-parent,
+.composition-draft label {
+	display: grid;
+	gap: var(--s1);
+	color: var(--text-3);
+	font-size: var(--type-micro);
+}
+.composition-parent select,
+.composition-draft select,
+.composition-draft input {
+	min-inline-size: 0;
+	block-size: 32px;
+	border: 1px solid var(--line-1);
+	border-radius: var(--r1);
+	background: var(--ink-1);
+	color: var(--text-1);
+	padding-inline: var(--s2);
+}
+.composition-breadcrumb {
+	display: flex;
+	align-items: center;
+	gap: var(--s1);
+	overflow-inline: auto;
+}
+.composition-breadcrumb span {
+	display: flex;
+	align-items: center;
+	gap: var(--s1);
+}
+.composition-breadcrumb button {
+	border: 0;
+	background: transparent;
+	color: var(--blue);
+	padding: var(--s1);
+	font-size: var(--type-small);
+	cursor: pointer;
+}
+.composition-breadcrumb button:disabled {
+	color: var(--text-1);
+	cursor: default;
+}
+.composition-list {
+	display: grid;
+	gap: var(--s1);
+}
+.composition-child {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto auto;
+	align-items: center;
+	gap: var(--s1);
+	border: 1px solid var(--line-2);
+	border-radius: var(--r1);
+	background: var(--ink-1);
+}
+.composition-child__open {
+	min-inline-size: 0;
+	display: flex;
+	align-items: center;
+	gap: var(--s2);
+	border: 0;
+	background: transparent;
+	padding: var(--s2);
+	text-align: start;
+	cursor: pointer;
+}
+.composition-child__open span,
+.composition-child__open strong,
+.composition-child__open small {
+	min-inline-size: 0;
+	display: block;
+}
+.composition-child__open strong {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: var(--type-small);
+}
+.composition-child .icon-button {
+	inline-size: 32px;
+}
+.composition-draft {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: var(--s2);
+	padding: var(--s2);
+	border: 1px solid var(--amber-3);
+	border-radius: var(--r2);
+	background: color-mix(in srgb, var(--amber-3) 12%, var(--ink-2));
+}
+.composition-draft label:first-child {
+	grid-column: 1 / -1;
+}
+.composition-draft__actions {
+	grid-column: 1 / -1;
+	display: flex;
+	gap: var(--s1);
+}
+.composition-status {
+	color: var(--amber-2);
+	font-size: var(--type-small);
+}
+.composition-error {
+	color: var(--red);
+	font-size: var(--type-small);
+	padding: var(--s2);
+	border: 1px solid color-mix(in srgb, var(--red) 55%, transparent);
+	border-radius: var(--r1);
+	background: color-mix(in srgb, var(--red) 10%, var(--ink-2));
+}
+.composition-draft [aria-invalid="true"] {
+	border-color: var(--red);
 }
 .modifier-row {
 	display: grid;
@@ -1972,6 +2123,20 @@ audio:focus-visible {
 	}
 	.studio-main > .inspector-panel .linkage-card {
 		padding: var(--s2);
+	}
+	.composition-draft {
+		grid-template-columns: 1fr;
+	}
+	.composition-draft__actions {
+		grid-column: 1;
+	}
+	.composition-parent select,
+	.composition-draft select,
+	.composition-draft input {
+		block-size: 44px;
+	}
+	.composition-child .icon-button {
+		inline-size: 44px;
 	}
 }
 @media (prefers-reduced-motion: reduce) {
