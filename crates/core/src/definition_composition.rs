@@ -35,6 +35,11 @@ impl WorkMeter {
         Self { used: 0, limit }
     }
 
+    #[cfg(test)]
+    pub const fn with_usage(used: u64, limit: u64) -> Self {
+        Self { used, limit }
+    }
+
     pub fn consume(&mut self, amount: usize) -> Result<(), CoreError> {
         let amount = u64::try_from(amount)
             .map_err(|_| CoreError::InvalidProject("composition work exceeds platform".into()))?;
@@ -49,6 +54,40 @@ impl WorkMeter {
             )));
         }
         Ok(())
+    }
+
+    pub(crate) const fn used(&self) -> u64 {
+        self.used
+    }
+
+    pub(crate) fn consume_replayed(&mut self, amount: u64) -> Result<(), CoreError> {
+        if amount == 0 {
+            return Ok(());
+        }
+        if self.used > self.limit {
+            self.used = self.used.checked_add(1).ok_or_else(arithmetic_overflow)?;
+            return Err(CoreError::InvalidProject(format!(
+                "definition composition work budget exceeded: {} > {}",
+                self.used, self.limit
+            )));
+        }
+        let remaining = self.limit - self.used;
+        if amount <= remaining {
+            self.used = self
+                .used
+                .checked_add(amount)
+                .ok_or_else(arithmetic_overflow)?;
+            return Ok(());
+        }
+        let Some(exceeded) = self.limit.checked_add(1) else {
+            self.used = self.limit;
+            return Err(arithmetic_overflow());
+        };
+        self.used = exceeded;
+        Err(CoreError::InvalidProject(format!(
+            "definition composition work budget exceeded: {} > {}",
+            self.used, self.limit
+        )))
     }
 }
 
@@ -65,10 +104,6 @@ struct PatternIdentity<'a> {
     path: Vec<(&'a str, u64)>,
     leaf_definition_id: &'a str,
     leaf_note_id: &'a str,
-}
-
-pub fn compose(project: &Project, root: &Definition) -> Result<Vec<ComposedNote>, CoreError> {
-    compose_metered(project, root, &mut WorkMeter::new())
 }
 
 pub fn compose_metered(
