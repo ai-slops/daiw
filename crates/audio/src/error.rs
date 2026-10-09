@@ -73,6 +73,8 @@ pub enum AudioError {
     SliceConversion(#[from] std::array::TryFromSliceError),
     #[error("--source-root requires an absolute directory")]
     InvalidSourceRoot,
+    #[error("--render-to-file requires an absolute output path")]
+    InvalidRenderOutputPath,
     #[error("file-backed render supports at most {limit} sources")]
     TooManySources { limit: usize },
     #[error("source files exceed the 1 GiB aggregate limit")]

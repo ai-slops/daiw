@@ -69,6 +69,7 @@ pub(crate) fn checked_frame_index(value: f64) -> Result<usize, AudioError> {
     Ok(value as usize)
 }
 
+#[cfg(test)]
 pub(crate) fn silent_buffer(samples: usize) -> Result<Vec<f32>, AudioError> {
     let mut buffer = Vec::new();
     buffer.try_reserve_exact(samples)?;

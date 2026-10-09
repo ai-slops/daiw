@@ -99,6 +99,15 @@ pub fn render_file_backed(
     crate::render::render_file_sources(&input.snapshot, &mut bank)
 }
 
+pub fn render_file_backed_to_wav(
+    input: FileRenderInput,
+    root: &Path,
+    output: &Path,
+) -> Result<crate::WavFileDescriptor, AudioError> {
+    let mut bank = FileSourceBank::open(root, &input.snapshot, &input.sources)?;
+    crate::wav_file::render_to_file(&input.snapshot, &mut bank, output)
+}
+
 impl SourceBank for FileSourceBank {
     fn metadata(&self, asset_id: &str) -> Result<SourceMetadata, AudioError> {
         self.sources
