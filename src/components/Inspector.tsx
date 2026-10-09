@@ -2,7 +2,9 @@ import { ChevronLeft, ChevronRight, Link2, SlidersHorizontal, Trash2 } from "luc
 import type { ExplainResult } from "../domain/api";
 import type { DryRunResult } from "../domain/api";
 import type { Definition, Instance, Modifier, Project, Track } from "../domain/project";
+import { CompositionInspector } from "./CompositionInspector";
 import { Button, EmptyState, Panel } from "./primitives";
+import type { ComponentProps } from "react";
 
 type InspectorProps = {
   readonly project: Project;
@@ -12,7 +14,19 @@ type InspectorProps = {
   readonly explanation: ExplainResult | undefined;
   readonly dryRun: DryRunResult | undefined;
   readonly onPreviewMove: (start: number) => void;
+	readonly definitionPath: readonly string[];
+	readonly busy: boolean;
+	readonly error: string | undefined;
+	readonly onClearError: () => void;
+	readonly onSelectDefinition: (definitionId: string) => void;
+	readonly onNavigateChild: (definitionId: string) => void;
+	readonly onNavigateCrumb: (index: number) => void;
+	readonly onAddDefinitionChild: CompositionProps["onAdd"];
+	readonly onSetDefinitionChild: CompositionProps["onSet"];
+	readonly onRemoveDefinitionChild: CompositionProps["onRemove"];
 };
+
+type CompositionProps = ComponentProps<typeof CompositionInspector>;
 
 const Linkage = ({ instance, definition }: { readonly instance: Instance; readonly definition: Definition }) => (
   <div className="linkage-card">
@@ -35,18 +49,37 @@ const ModifierRow = ({ modifier, onRemove }: { readonly modifier: Modifier; read
   </div>
 );
 
-export const Inspector = ({ project, instance, onRemoveModifier, onMove, explanation, dryRun, onPreviewMove }: InspectorProps) => {
+export const Inspector = ({
+	project, instance, onRemoveModifier, onMove, explanation, dryRun, onPreviewMove,
+	definitionPath, busy, error, onClearError, onSelectDefinition, onNavigateChild, onNavigateCrumb,
+	onAddDefinitionChild, onSetDefinitionChild, onRemoveDefinitionChild,
+}: InspectorProps) => {
   const definition = project.definitions.find((item) => item.id === instance?.definitionId);
   const track: Track | undefined = project.tracks.find((item) => item.id === instance?.trackId);
   const modifiers = project.modifiers.filter((item) => instance?.modifiers.includes(item.id) === true);
 
   return (
     <Panel title="Inspector" eyebrow="Selection" className="inspector-panel">
-      {instance === undefined || definition === undefined ? <EmptyState>Select an arrangement clip to inspect its link and modifiers.</EmptyState> : (
-        <div className="inspector-stack">
+		<div className="inspector-stack">
+			{instance === undefined || definition === undefined ? <EmptyState>Select an arrangement clip to inspect placement details. Definition composition remains editable below.</EmptyState> : <>
           <div className="inspector-name"><strong>{instance.name}</strong><small>{track?.name ?? "Unassigned"} · bar {Math.floor(instance.start / 4) + 1}</small></div>
           <Linkage instance={instance} definition={definition} />
           {explanation?.instance.id === instance.id ? <p className="effective-summary">Rust explanation: {explanation.definition.notes.length} source notes, {explanation.modifiers.length} modifiers, and {explanation.overrides.length} instance overrides.</p> : null}
+			</>}
+			<CompositionInspector
+				project={project}
+				path={definitionPath}
+				busy={busy}
+				error={error}
+				onClearError={onClearError}
+				onSelectParent={onSelectDefinition}
+				onNavigateChild={onNavigateChild}
+				onNavigateCrumb={onNavigateCrumb}
+				onAdd={onAddDefinitionChild}
+				onSet={onSetDefinitionChild}
+				onRemove={onRemoveDefinitionChild}
+			/>
+			{instance === undefined || definition === undefined ? null : <>
           <section>
             <div className="section-label"><span>MODIFIER CHAIN</span><small>{modifiers.length}</small></div>
             {modifiers.length === 0 ? <p className="quiet-copy">No modifiers. The instance currently follows its source directly.</p> : null}
@@ -72,8 +105,8 @@ export const Inspector = ({ project, instance, onRemoveModifier, onMove, explana
             </div>}
           </section>
           <p className="quiet-copy">Detaching a source is intentionally unavailable in Stage 1.</p>
-        </div>
-      )}
+			</>}
+		</div>
     </Panel>
   );
 };

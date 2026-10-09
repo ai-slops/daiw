@@ -1,5 +1,5 @@
 import { AlertTriangle, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Arrangement } from "./components/Arrangement";
 import { Mixer } from "./components/Mixer";
 import { PianoRoll } from "./components/PianoRoll";
@@ -15,8 +15,8 @@ import { StudioRail, type Workspace } from "./components/StudioRail";
 import { TimingDialog } from "./components/TimingDialog";
 import { TopBar } from "./components/TopBar";
 import { Transport } from "./components/Transport";
-import type { Note } from "./domain/project";
 import { useAudio } from "./hooks/use-audio";
+import { useCompositionEditor } from "./hooks/use-composition-editor";
 import { useStudio } from "./hooks/use-studio";
 import { downloadMix, downloadProject } from "./lib/api-client";
 
@@ -60,25 +60,21 @@ const LoadedStudio = ({ studio, project }: LoadedStudioProps) => {
 			project.instances[0],
 		[project, selectedId],
 	);
-	useEffect(() => {
-		if (selected !== undefined) void studio.explain(selected.id);
-	}, [selected, studio.explain]);
-
-	const editNotes = (scope: "source" | "instance", notes: readonly Note[]) => {
-		if (selected === undefined) return;
-		void studio.command({
-			type: "editNotes",
-			instanceId: selected.id,
-			scope,
-			notes,
-		});
-	};
+	const composition = useCompositionEditor({ project, selected, studio });
 	const exportProject = () => downloadProject(project.id);
 	const browserPanel = (
 		<BrowserWorkspace project={project} selected={selected} studio={studio} />
 	);
 	const inspectorPanel = (
-		<InspectorWorkspace project={project} selected={selected} studio={studio} />
+		<InspectorWorkspace
+			project={project}
+			selected={selected}
+			studio={studio}
+			definitionPath={composition.definitionPath}
+			onSelectDefinition={composition.selectDefinition}
+			onNavigateChild={composition.navigateChild}
+			onNavigateCrumb={composition.navigateCrumb}
+		/>
 	);
 
 	return (
@@ -155,16 +151,16 @@ const LoadedStudio = ({ studio, project }: LoadedStudioProps) => {
 							}
 						/>
 						<PianoRoll
-							key={pianoRollSessionKey(selected)}
+							key={pianoRollSessionKey(selected, composition.sourceDefinition?.id)}
 							project={project}
 							instance={selected}
+							sourceDefinition={composition.sourceDefinition}
+							sourceParentName={composition.sourceParentName}
+							compositionNotes={composition.sourceDefinition?.id === selected?.definitionId ? composition.currentExplanation?.compositionNotes : undefined}
 							effectiveNotes={
-								studio.explanation?.instance.id === selected?.id &&
-								studio.explanation?.revision === project.revision
-									? studio.explanation.effectiveNotes
-									: undefined
+								composition.currentExplanation?.effectiveNotes
 							}
-							onCommit={editNotes}
+							onCommit={composition.editNotes}
 						/>
 					</>
 				) : null}

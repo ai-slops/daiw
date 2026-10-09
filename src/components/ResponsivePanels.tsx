@@ -2,11 +2,23 @@ import type { Instance, Project } from "../domain/project";
 import type { useStudio } from "../hooks/use-studio";
 import { BrowserPanel } from "./BrowserPanel";
 import { Inspector } from "./Inspector";
+import {
+	addDefinitionChildCommand,
+	removeDefinitionChildCommand,
+	setDefinitionChildCommand,
+} from "./piano-roll-session";
 
 type ResponsivePanelProps = {
 	readonly project: Project;
 	readonly selected: Instance | undefined;
 	readonly studio: ReturnType<typeof useStudio>;
+};
+
+type InspectorWorkspaceProps = ResponsivePanelProps & {
+	readonly definitionPath: readonly string[];
+	readonly onSelectDefinition: (definitionId: string) => void;
+	readonly onNavigateChild: (definitionId: string) => void;
+	readonly onNavigateCrumb: (index: number) => void;
 };
 
 export const BrowserWorkspace = ({
@@ -53,7 +65,11 @@ export const InspectorWorkspace = ({
 	project,
 	selected,
 	studio,
-}: ResponsivePanelProps) => (
+	definitionPath,
+	onSelectDefinition,
+	onNavigateChild,
+	onNavigateCrumb,
+}: InspectorWorkspaceProps) => (
 	<Inspector
 		project={project}
 		instance={selected}
@@ -85,5 +101,15 @@ export const InspectorWorkspace = ({
 						true,
 					)
 		}
+		definitionPath={definitionPath}
+		busy={studio.busy}
+		error={studio.error}
+		onClearError={studio.clearError}
+		onSelectDefinition={onSelectDefinition}
+		onNavigateChild={onNavigateChild}
+		onNavigateCrumb={onNavigateCrumb}
+		onAddDefinitionChild={(parentDefinitionId, child) => studio.command(addDefinitionChildCommand(parentDefinitionId, child))}
+		onSetDefinitionChild={(parentDefinitionId, child) => studio.command(setDefinitionChildCommand(parentDefinitionId, child))}
+		onRemoveDefinitionChild={(parentDefinitionId, childId) => void studio.command(removeDefinitionChildCommand(parentDefinitionId, childId))}
 	/>
 );

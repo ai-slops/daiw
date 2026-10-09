@@ -1,7 +1,9 @@
 import { Link2, Minus, Plus, ZoomIn } from "lucide-react";
 import { useState } from "react";
-import type { Instance, Note, Project } from "../domain/project";
+import type { CompositionNote } from "../domain/api";
+import type { Definition, Instance, Note, Project } from "../domain/project";
 import { NoteSchema } from "../domain/project";
+import { provenanceLabel, sourceNoteLayers } from "./piano-roll-session";
 import { IconButton, Tabs } from "./primitives";
 
 type EditScope = "source" | "instance";
@@ -13,24 +15,34 @@ const scopeTabs = [
 type PianoRollProps = {
 	readonly project: Project;
 	readonly instance: Instance | undefined;
+	readonly sourceDefinition: Definition | undefined;
+	readonly sourceParentName: string | undefined;
 	readonly effectiveNotes: readonly Note[] | undefined;
+	readonly compositionNotes: readonly CompositionNote[] | undefined;
 	readonly onCommit: (scope: EditScope, notes: readonly Note[]) => void;
 };
 
 export const PianoRoll = ({
-	project, instance, effectiveNotes, onCommit,
+	project, instance, sourceDefinition, sourceParentName, effectiveNotes, compositionNotes, onCommit,
 }: PianoRollProps) => {
 	const [scope, setScope] = useState<EditScope>("instance");
 	const [zoom, setZoom] = useState(1);
-	const definition = project.definitions.find(
-		(item) => item.id === instance?.definitionId,
+	const definition = sourceDefinition ?? project.definitions.find((item) => item.id === instance?.definitionId);
+	const instanceScopeAvailable = definition?.id === instance?.definitionId;
+	const activeScope = instanceScopeAvailable ? scope : "source";
+	const layers = sourceNoteLayers(definition?.id ?? "", definition?.notes ?? [], compositionNotes ?? []);
+	const notes = activeScope === "source" ? layers.solid : effectiveNotes ?? [];
+	const ghosts = activeScope === "source" ? layers.ghosts : [];
+	const visibleNotes = [...notes, ...ghosts];
+	const definitionNames = new Map<string, string>(project.definitions.map((item) => [item.id, item.name]));
+	const firstGhost = ghosts[0];
+	const visiblePath = firstGhost?.origin.definitionPath?.map((entry) => definitionNames.get(entry.definitionId) ?? entry.definitionId).join(" / ");
+	const compositionPreviewUnavailable = activeScope === "source" && (definition?.children?.length ?? 0) > 0 && compositionNotes === undefined;
+	const highest = visibleNotes.reduce(
+		(value, note) => Math.max(value, note.pitch), visibleNotes[0]?.pitch ?? 72,
 	);
-	const notes = scope === "source" ? definition?.notes ?? [] : effectiveNotes ?? [];
-	const highest = notes.reduce(
-		(value, note) => Math.max(value, note.pitch), notes[0]?.pitch ?? 72,
-	);
-	const lowest = notes.reduce(
-		(value, note) => Math.min(value, note.pitch), notes[0]?.pitch ?? 60,
+	const lowest = visibleNotes.reduce(
+		(value, note) => Math.min(value, note.pitch), visibleNotes[0]?.pitch ?? 60,
 	);
 	const topPitch = Math.ceil(highest / 12) * 12;
 	const pitchRows = Array.from(
@@ -39,7 +51,7 @@ export const PianoRoll = ({
 	);
 	const length = definition?.length ?? 8;
 	const commitAt = (start: number, pitch: number) => {
-		if (instance === undefined || definition === undefined) return;
+		if (definition === undefined || (activeScope === "instance" && instance === undefined)) return;
 		const hit = notes.find(
 			(note) =>
 				Math.abs(note.start - start) < 0.26 &&
@@ -58,11 +70,11 @@ export const PianoRoll = ({
 						}),
 					]
 				: notes.filter((note) => note.id !== hit.id);
-		onCommit(scope, next);
+		onCommit(activeScope, next);
 	};
 
 	const edit = (event: React.MouseEvent<HTMLButtonElement>) => {
-		if (instance === undefined || definition === undefined) return;
+		if (definition === undefined || (activeScope === "instance" && instance === undefined)) return;
 		const bounds = event.currentTarget.getBoundingClientRect();
 		const start = Math.max(
 			0,
@@ -91,20 +103,15 @@ export const PianoRoll = ({
 		<section className="piano-roll" aria-label="Piano roll editor">
 			<header className="editor-header">
 				<div className="editor-header__title">
-					<strong>{instance?.name ?? "No clip selected"}</strong>
+					<strong>{activeScope === "source" ? definition?.name ?? "No source selected" : instance?.name ?? "No clip selected"}</strong>
 					{definition === undefined ? null : (
 						<span>
-							<Link2 aria-hidden="true" size="var(--icon-sm)" /> Linked to{" "}
-							{definition.name}
+							<Link2 aria-hidden="true" size="var(--icon-sm)" />
+							{activeScope === "instance" ? `Linked to ${definition.name}` : sourceParentName === undefined ? "Shared source · own notes editable" : `Nested in ${sourceParentName} · own notes editable`}
 						</span>
 					)}
 				</div>
-				<Tabs
-					value={scope}
-					items={scopeTabs}
-					onChange={setScope}
-					label="Note editing scope"
-				/>
+				{instanceScopeAvailable ? <Tabs value={activeScope} items={scopeTabs} onChange={setScope} label="Note editing scope" /> : <span className="source-only-badge">Source only</span>}
 				<div className="editor-tools">
 					<IconButton
 						label="Zoom out"
@@ -133,7 +140,7 @@ export const PianoRoll = ({
 				<button
 					type="button"
 					className="note-grid"
-					disabled={instance === undefined || (scope === "instance" && effectiveNotes === undefined)}
+					disabled={definition === undefined || (activeScope === "instance" && (instance === undefined || effectiveNotes === undefined))}
 					style={{ minInlineSize: `${600 * zoom}px`, blockSize: `${pitchRows.length * 20}px` }}
 					aria-label={`${notes.length} notes. Click or tap the grid to add or remove quantized notes.`}
 					onClick={edit}
@@ -160,20 +167,24 @@ export const PianoRoll = ({
 								/>
 							);
 						})}
+						{ghosts.map((note) => {
+							const row = pitchRows.findIndex((pitch) => Math.abs(pitch - note.pitch) < 0.5);
+							if (row < 0) return null;
+							return <rect key={`ghost-${note.id}`} className="midi-note midi-note--ghost" x={note.start * 80} y={row * 20 + 2} width={Math.max(note.duration * 80 - 3, 8)} height="16" rx="2"><title>{provenanceLabel(note, definitionNames)}</title></rect>;
+						})}
 					</svg>
 				</button>
 			</div>
 			<footer className="editor-footer">
 				<span>
-					{scope === "instance" && effectiveNotes === undefined
+					{activeScope === "instance" && effectiveNotes === undefined
 						? "Resolving canonical instance notes…"
-						: scope === "source"
-						? "Edits update every linked instance."
+						: activeScope === "source"
+						? compositionPreviewUnavailable ? "Composed preview unavailable without a scoped instance; own notes remain editable." : ghosts.length === 0 ? "Edits update this definition’s own notes in every linked use." : `${ghosts.length} nested notes are read-only ghosts; edits change only ${definition?.name ?? "this source"} own notes.`
 						: "Edits create an override for this instance only."}
 				</span>
 				<span>
-					Grid 1/16 · Velocity {Math.round((notes.at(-1)?.velocity ?? 0) * 100)}
-					%
+					{firstGhost === undefined ? `Grid 1/16 · Velocity ${Math.round((notes.at(-1)?.velocity ?? 0) * 100)}%` : <span className="provenance-summary" title={provenanceLabel(firstGhost, definitionNames)}>Nested path: {visiblePath ?? firstGhost.origin.definitionId}</span>}
 				</span>
 			</footer>
 		</section>
