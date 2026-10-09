@@ -15,6 +15,25 @@ import {
 	TrackSchema,
 } from "./project";
 
+export const DefinitionPathEntrySchema = z.object({
+	definitionId: z.string().min(1),
+	definitionRevision: z.number().int().nonnegative(),
+	placementId: z.string().min(1).optional(),
+	loopIndex: z.number().int().nonnegative().optional(),
+});
+
+export const NoteOriginSchema = z.object({
+	definitionId: z.string().min(1),
+	noteId: z.string().min(1),
+	modifierIds: z.array(z.string().min(1)),
+	definitionPath: z.array(DefinitionPathEntrySchema).optional(),
+	instanceLoopIndex: z.number().int().nonnegative().optional(),
+});
+
+export const CompositionNoteSchema = NoteSchema.extend({
+	origin: NoteOriginSchema,
+});
+
 export const SessionSchema = z.object({ token: z.string().min(1) });
 export const HealthSchema = z.object({
 	status: z.literal("ok"),
@@ -56,6 +75,7 @@ export const ExplainResultSchema = z.object({
 	overrides: z.array(OperationSchema),
 	unboundModifierIds: z.array(z.string().min(1)).optional(),
 	modifierPlan: ModifierPlanSchema.optional(),
+	compositionNotes: z.array(CompositionNoteSchema).optional(),
 });
 
 const InstanceCheckSchema = z.discriminatedUnion("status", [
@@ -134,11 +154,7 @@ export const SnapshotSchema = z.object({
 		NoteSchema.extend({
 			instanceId: z.string(),
 			trackId: z.string(),
-			origin: z.object({
-				definitionId: z.string(),
-				noteId: z.string(),
-				modifierIds: z.array(z.string()),
-			}),
+			origin: NoteOriginSchema,
 		}),
 	),
 	regions: z.array(
@@ -175,3 +191,4 @@ export const ProjectResultSchema = z
 export type ProjectSummary = z.infer<typeof ProjectSummarySchema>;
 export type DryRunResult = z.infer<typeof DryRunResultSchema>;
 export type ExplainResult = z.infer<typeof ExplainResultSchema>;
+export type CompositionNote = z.infer<typeof CompositionNoteSchema>;

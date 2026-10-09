@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { NoteOriginSchema } from "../domain/api";
 import { MeterMapSchema, MeterSchema, TempoMapSchema, TempoSchema } from "../domain/project";
 
 const instrumentSchema = z.enum(["synth", "bass", "kick", "snare", "hat", "pad", "sample"]);
@@ -24,11 +25,7 @@ const effectiveNoteSchema = z.object({
   velocity: z.number(),
   instanceId: z.string(),
   trackId: z.string(),
-  origin: z.object({
-    definitionId: z.string(),
-    noteId: z.string(),
-    modifierIds: z.array(z.string()),
-  }),
+  origin: NoteOriginSchema,
 });
 
 const audioRegionSchema = z.object({

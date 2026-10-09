@@ -24,6 +24,42 @@ it("accepts tempo and meter map native feature requirements", () => {
   }).success).toBe(true);
 });
 
+it("accepts the nested definitions native feature requirement", () => {
+  // Given / When
+  const result = NativeProjectEnvelopeSchema.safeParse({
+    ...envelope,
+    requiredFeatures: ["core-v1", "nested-definitions-v1"],
+  });
+
+  // Then
+  expect(result.success).toBe(true);
+});
+
+it("preserves optional nested note provenance paths in snapshots", () => {
+  // Given
+  const snapshot = {
+    revision: "r", tempo: 120, length: 8, tracks: [], regions: [],
+    notes: [{
+      id: "rendered-note", start: 1, duration: 1, pitch: 64, velocity: 0.8,
+      instanceId: "instance-1", trackId: "track-1",
+      origin: {
+        definitionId: "leaf", noteId: "leaf-note", modifierIds: ["modifier-1"],
+        definitionPath: [
+          { definitionId: "root", definitionRevision: 2 },
+          { definitionId: "leaf", definitionRevision: 4, placementId: "placement-1", loopIndex: 1 },
+        ],
+        instanceLoopIndex: 2,
+      },
+    }],
+  };
+
+  // When
+  const parsed = SnapshotSchema.parse(snapshot);
+
+  // Then
+  expect(parsed.notes[0]?.origin).toEqual(snapshot.notes[0]?.origin);
+});
+
 it("cannot be mistaken for a legacy project-result wrapper", () => {
   const project = { id: "p", name: "P", revision: "r", tempo: 120, meter: [4, 4], definitions: [], instances: [], modifiers: [], tracks: [], history: [], proposals: [] };
   expect(ProjectResultSchema.safeParse({ ...envelope, content: project }).success).toBe(false);
