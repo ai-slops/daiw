@@ -1,4 +1,5 @@
 mod binding_validation;
+mod bounded_lru;
 mod change_impact;
 mod cli;
 mod command;
@@ -22,6 +23,9 @@ mod fixture;
 mod fixture_values;
 mod ids;
 mod instance_mutation;
+mod instance_pattern_cache;
+#[cfg(test)]
+mod instance_pattern_cache_tests;
 mod instance_resolution;
 mod modifier_binding;
 mod modifier_plan;
@@ -42,6 +46,10 @@ mod operation_access;
 mod operation_validation;
 mod ordering_graph;
 mod pattern_growth;
+mod pattern_key;
+mod pattern_memory;
+#[cfg(test)]
+mod pattern_ownership_tests;
 mod pattern_resolution;
 mod project;
 mod proposal_adapter;

@@ -1,7 +1,7 @@
 use daiw_core::{
-    CacheLimits, ChangeRequest, ChildPlacement, Command, Modifier, Note, Operation, Principal,
-    Project, ProposalParams, Request, Response, Tick, WorkerRuntime, apply_change, create_project,
-    create_proposal,
+    CacheLimits, ChangeRequest, ChildPlacement, Command, Modifier, Note, NotePatch, Operation,
+    Principal, Project, ProposalParams, Request, Response, Tick, WorkerRuntime, apply_change,
+    create_project, create_proposal,
 };
 use serde_json::{Value, json};
 
@@ -118,6 +118,105 @@ fn full_responses_match_for_all_composition_reaching_reads() {
         "change.dryRun",
         json!({"expectedRevision": project.revision, "command": {"type": "setTempo", "tempo": 123.0}}),
     );
+    let proposal = create_proposal(
+        &project,
+        ProposalParams {
+            expected_revision: project.revision.clone(),
+            instance_id,
+            request: "explicit".into(),
+            operations: Some(vec![Operation::Transpose { semitones: 7.0 }]),
+        },
+    )
+    .unwrap_or_else(|error| panic!("proposal failed: {error:?}"));
+    let proposal_id = proposal.id.clone();
+    let mut preview = project;
+    preview.proposals.push(proposal);
+    assert_disabled_cold_warm(
+        &preview,
+        "project.snapshot",
+        json!({"proposalId": proposal_id}),
+    );
+}
+
+#[test]
+fn proposal_preview_uses_a_pattern_entry_separate_from_main() {
+    // Given
+    let mut project = nested_project();
+    let proposal = create_proposal(
+        &project,
+        ProposalParams {
+            expected_revision: project.revision.clone(),
+            instance_id: project.instances[0].id.clone(),
+            request: "explicit".into(),
+            operations: Some(vec![Operation::Transpose { semitones: 5.0 }]),
+        },
+    )
+    .unwrap_or_else(|error| panic!("proposal failed: {error:?}"));
+    let proposal_id = proposal.id.clone();
+    project.proposals.push(proposal);
+    let mut runtime = WorkerRuntime::default();
+
+    // When
+    let _ = runtime.dispatch(request(project.clone(), "project.snapshot", json!({})));
+    let _ = runtime.dispatch(request(
+        project.clone(),
+        "project.snapshot",
+        json!({"proposalId": proposal_id}),
+    ));
+    let _ = runtime.dispatch(request(project.clone(), "project.snapshot", json!({})));
+    let stats = match runtime.dispatch(request(project, "project.instanceCacheStats", json!({}))) {
+        Response::Success(response) => response.result,
+        Response::Failure(response) => panic!("stats failed: {:?}", response.error),
+    };
+
+    // Then
+    assert_eq!(stats["totals"]["misses"], 2);
+    assert_eq!(stats["totals"]["hits"], 1);
+    assert_eq!(stats["resident"]["entries"], 2);
+}
+
+#[test]
+fn effective_track_error_precedes_missing_patch_target_with_every_cache_mode() {
+    // Given
+    let mut project = nested_project();
+    let track_id = project.instances[0].track_id.clone();
+    project
+        .tracks
+        .iter_mut()
+        .find(|track| track.id == track_id)
+        .unwrap_or_else(|| panic!("fixture track missing"))
+        .gain = 20.0;
+    project.instances[0].overrides = vec![
+        Operation::Gain { db: 10.0 },
+        Operation::PatchNotes(NotePatch {
+            updates: vec![note("missing-target", 0.0, 65.0)],
+            added: Vec::new(),
+            removed: Vec::new(),
+        }),
+    ];
+    let scenarios = [
+        (WorkerRuntime::with_cache_limits(CacheLimits::disabled()), 1),
+        (WorkerRuntime::default(), 1),
+        (WorkerRuntime::default(), 2),
+    ];
+
+    // When
+    let errors = scenarios.map(|(mut runtime, attempts)| {
+        let mut response =
+            runtime.dispatch(request(project.clone(), "project.snapshot", json!({})));
+        for _ in 1..attempts {
+            response = runtime.dispatch(request(project.clone(), "project.snapshot", json!({})));
+        }
+        match response {
+            Response::Failure(response) => response.error,
+            Response::Success(_) => panic!("invalid effective track unexpectedly resolved"),
+        }
+    });
+
+    // Then
+    assert!(errors.iter().all(|error| {
+        error.code == "InvalidProject" && error.message.contains("effective track")
+    }));
 }
 
 #[test]
@@ -223,4 +322,24 @@ fn stale_binding_and_proposal_failures_are_cache_equivalent() {
         "project.snapshot",
         json!({"proposalId": proposal_id}),
     );
+
+    let mut runtime = WorkerRuntime::default();
+    let warm = runtime.dispatch(request(attached, "project.snapshot", json!({})));
+    assert!(matches!(warm, Response::Success(_)));
+    let stale = runtime.dispatch(request(
+        stale_binding.clone(),
+        "project.snapshot",
+        json!({}),
+    ));
+    assert!(matches!(stale, Response::Failure(_)));
+    let stats = match runtime.dispatch(request(
+        stale_binding,
+        "project.instanceCacheStats",
+        json!({}),
+    )) {
+        Response::Success(response) => response.result,
+        Response::Failure(response) => panic!("stats failed: {:?}", response.error),
+    };
+    assert_eq!(stats["lastRequest"]["hits"], 0);
+    assert_eq!(stats["lastRequest"]["misses"], 0);
 }

@@ -1,9 +1,9 @@
 use crate::definition_composition::{WorkMeter, compose_metered};
-use crate::note_resolution::{NoteRequest, resolve_composed};
+use crate::note_resolution::{NoteRequest, resolve_pattern};
 use crate::{Tick, create_project};
 
 #[test]
-fn cropped_repetition_counts_only_emitted_events() {
+fn cropped_repetition_counts_only_emitted_events() -> Result<(), crate::CoreError> {
     // Given
     let mut project = create_project(Some("Exact event count"), true);
     project.definitions[0].length = Tick::from_ticks(10);
@@ -19,23 +19,27 @@ fn cropped_repetition_counts_only_emitted_events() {
 
     // When
     let mut meter = WorkMeter::new();
-    let composed = compose_metered(&project, definition, &mut meter)
-        .unwrap_or_else(|error| panic!("composition failed: {error:?}"));
-    let notes = resolve_composed(
+    let composed = compose_metered(&project, definition, &mut meter)?;
+    let pattern = crate::pattern_resolution::from_composed(
+        composed,
+        definition,
+        &[],
+        &mut meter,
+        &mut Vec::new(),
+    )?;
+    let notes = resolve_pattern(
         NoteRequest {
             definition,
             instance,
             track_id: &instance.track_id,
-            operations: &[],
             event_budget: 1,
         },
-        composed,
-        &mut meter,
-    )
-    .unwrap_or_else(|error| panic!("exact event budget failed: {error:?}"));
+        &pattern,
+    )?;
 
     // Then
     assert_eq!(notes.len(), 1);
+    Ok(())
 }
 
 #[test]

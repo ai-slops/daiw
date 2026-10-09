@@ -5,7 +5,7 @@ use crate::music::Note;
 use crate::note_resolution::{EFFECTIVE_EVENT_LIMIT, NoteRequest};
 use crate::project::{Project, Snapshot};
 use crate::track_resolution::derive_track;
-use crate::validation::{validate_operations, validate_project};
+use crate::validation::validate_project;
 
 pub fn snapshot(
     project: &Project,
@@ -47,13 +47,7 @@ pub(crate) fn snapshot_with_session(
             definition,
             composed: &composed,
         }
-        .operations()?;
-        validate_operations(
-            &operations
-                .iter()
-                .map(|resolved| resolved.operation.clone())
-                .collect::<Vec<_>>(),
-        )?;
+        .validated_operations()?;
         let track_id = match derive_track(base_track, &instance.id, &operations)? {
             Some(track) => {
                 let id = track.id.clone();
@@ -76,16 +70,24 @@ pub(crate) fn snapshot_with_session(
             .ok_or_else(|| {
                 CoreError::InvalidProject("effective event budget exhausted".to_owned())
             })?;
-        notes.extend(crate::note_resolution::resolve_composed(
+        let pattern = session.pattern(
+            crate::instance_pattern_cache::PatternRequest {
+                project: &rendered,
+                instance,
+                definition,
+                composed,
+                operations: &operations,
+            },
+            &mut work,
+        )?;
+        notes.extend(crate::note_resolution::resolve_pattern(
             NoteRequest {
                 definition,
                 instance,
                 track_id: &track_id,
-                operations: &operations,
                 event_budget,
             },
-            composed,
-            &mut work,
+            &pattern,
         )?);
     }
     crate::effective_validation::validate(&notes)?;
@@ -142,22 +144,24 @@ pub(crate) fn editable_notes_metered_with_session(
         definition,
         composed: &composed,
     }
-    .operations()?;
-    validate_operations(
-        &operations
-            .iter()
-            .map(|item| item.operation.clone())
-            .collect::<Vec<_>>(),
+    .validated_operations()?;
+    let pattern = session.pattern(
+        crate::instance_pattern_cache::PatternRequest {
+            project,
+            instance,
+            definition,
+            composed,
+            operations: &operations,
+        },
+        work,
     )?;
-    crate::note_resolution::editable_from_composed(
+    crate::note_resolution::editable_from_pattern(
         crate::note_resolution::EditableRequest {
             definition,
-            operations: &operations,
             instance_id: &instance.id,
             length: instance.length,
         },
-        composed,
-        work,
+        pattern,
     )
 }
 
@@ -202,16 +206,24 @@ pub(crate) fn explain_notes_with_session(
         definition,
         composed: &composed,
     }
-    .operations()?;
-    let editable = crate::note_resolution::editable_from_composed(
+    .validated_operations()?;
+    let pattern = session.pattern(
+        crate::instance_pattern_cache::PatternRequest {
+            project,
+            instance,
+            definition,
+            composed,
+            operations: &operations,
+        },
+        &mut work,
+    )?;
+    let editable = crate::note_resolution::editable_from_pattern(
         crate::note_resolution::EditableRequest {
             definition,
-            operations: &operations,
             instance_id: &instance.id,
             length: instance.length,
         },
-        composed,
-        &mut work,
+        pattern,
     )?;
     Ok((editable, composition))
 }

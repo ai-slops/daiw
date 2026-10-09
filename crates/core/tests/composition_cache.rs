@@ -61,6 +61,15 @@ fn stats(runtime: &mut WorkerRuntime, project: Project) -> Value {
     result(runtime.dispatch(request("stats", project, "project.cacheStats", json!({}))))
 }
 
+fn instance_stats(runtime: &mut WorkerRuntime, project: Project) -> Value {
+    result(runtime.dispatch(request(
+        "instance-stats",
+        project,
+        "project.instanceCacheStats",
+        json!({}),
+    )))
+}
+
 #[test]
 fn repeated_snapshot_is_canonically_equal_and_reports_a_hit() {
     // Given
@@ -89,6 +98,98 @@ fn repeated_snapshot_is_canonically_equal_and_reports_a_hit() {
     assert_eq!(stats["totals"]["misses"], 1);
     assert_eq!(stats["lastRequest"]["hits"], 1);
     assert_eq!(stats["resident"]["entries"], 1);
+}
+
+#[test]
+fn repeated_snapshot_reuses_post_modifier_pattern_independently() {
+    // Given
+    let project = nested_project("warm pattern");
+    let mut runtime = WorkerRuntime::default();
+
+    // When
+    let cold = result(runtime.dispatch(request(
+        "cold-pattern",
+        project.clone(),
+        "project.snapshot",
+        json!({}),
+    )));
+    let warm = result(runtime.dispatch(request(
+        "warm-pattern",
+        project.clone(),
+        "project.snapshot",
+        json!({}),
+    )));
+    let summary = instance_stats(&mut runtime, project);
+
+    // Then
+    assert_eq!(warm, cold);
+    assert_eq!(summary["totals"]["hits"], 1);
+    assert_eq!(summary["totals"]["misses"], 1);
+    assert_eq!(summary["lastRequest"]["hits"], 1);
+    assert_eq!(summary["resident"]["entries"], 1);
+}
+
+#[test]
+fn downstream_instance_fields_hit_pattern_cache_but_recompute_output() {
+    // Given
+    let project = nested_project("downstream fields");
+    let mut changed = project.clone();
+    changed.instances[0].start = beat(3.0);
+    changed.instances[0].length = beat(2.0);
+    changed.tempo = 93.0;
+    let mut runtime = WorkerRuntime::default();
+    let _ = runtime.dispatch(request("warm-base", project, "project.snapshot", json!({})));
+
+    // When
+    let actual = result(runtime.dispatch(request(
+        "changed-downstream",
+        changed.clone(),
+        "project.snapshot",
+        json!({}),
+    )));
+    let expected = result(
+        WorkerRuntime::with_cache_limits(CacheLimits::disabled()).dispatch(request(
+            "changed-downstream",
+            changed.clone(),
+            "project.snapshot",
+            json!({}),
+        )),
+    );
+    let summary = instance_stats(&mut runtime, changed);
+
+    // Then
+    assert_eq!(actual, expected);
+    assert_eq!(summary["lastRequest"]["hits"], 1);
+}
+
+#[test]
+fn slot_changes_miss_pattern_cache_without_invalidating_source() {
+    // Given
+    let project = nested_project("pattern keys");
+    let mut changed = project.clone();
+    changed.definitions[0].slots.insert(
+        "fresh".into(),
+        daiw_core::NoteSlot {
+            start: beat(0.0),
+            end: beat(1.0),
+        },
+    );
+    let mut runtime = WorkerRuntime::default();
+    let _ = runtime.dispatch(request("warm-key", project, "project.snapshot", json!({})));
+
+    // When
+    let _ = runtime.dispatch(request(
+        "changed-key",
+        changed.clone(),
+        "project.snapshot",
+        json!({}),
+    ));
+    let source = stats(&mut runtime, changed.clone());
+    let pattern = instance_stats(&mut runtime, changed);
+
+    // Then
+    assert_eq!(source["lastRequest"]["hits"], 1);
+    assert_eq!(pattern["lastRequest"]["misses"], 1);
 }
 
 #[test]
@@ -198,15 +299,36 @@ fn agent_cannot_read_cache_stats() {
     // Given
     let project = nested_project("denied stats");
     let mut runtime = WorkerRuntime::default();
-    let mut request = request("stats", project, "project.cacheStats", json!({}));
-    request.principal = Principal::Agent;
+    // When / Then
+    for method in ["project.cacheStats", "project.instanceCacheStats"] {
+        let mut denied = request("stats", project.clone(), method, json!({}));
+        denied.principal = Principal::Agent;
+        match runtime.dispatch(denied) {
+            Response::Failure(response) => assert_eq!(response.error.code, "PermissionDenied"),
+            Response::Success(_) => panic!("agent cache stats unexpectedly succeeded"),
+        }
+    }
+}
+
+#[test]
+fn both_stats_methods_are_read_only_and_preserve_last_request() {
+    // Given
+    let project = nested_project("read only stats");
+    let mut runtime = WorkerRuntime::default();
+    let _ = runtime.dispatch(request(
+        "warm",
+        project.clone(),
+        "project.snapshot",
+        json!({}),
+    ));
+    let source_before = stats(&mut runtime, project.clone());
+    let instance_before = instance_stats(&mut runtime, project.clone());
 
     // When
-    let response = runtime.dispatch(request);
+    let source_after = stats(&mut runtime, project.clone());
+    let instance_after = instance_stats(&mut runtime, project);
 
     // Then
-    match response {
-        Response::Failure(response) => assert_eq!(response.error.code, "PermissionDenied"),
-        Response::Success(_) => panic!("agent cache stats unexpectedly succeeded"),
-    }
+    assert_eq!(source_after, source_before);
+    assert_eq!(instance_after, instance_before);
 }

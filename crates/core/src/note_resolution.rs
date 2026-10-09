@@ -2,7 +2,6 @@ use crate::error::CoreError;
 use crate::ids::{NoteId, TrackId};
 use crate::music::{Definition, EffectiveNote, Instance, Note, NoteOrigin};
 use crate::pattern_resolution::PatternNote;
-use crate::resolution::ResolvedOperation;
 use crate::time::Tick;
 
 pub const EFFECTIVE_EVENT_LIMIT: u64 = 100_000;
@@ -11,13 +10,11 @@ pub struct NoteRequest<'a> {
     pub definition: &'a Definition,
     pub instance: &'a Instance,
     pub track_id: &'a TrackId,
-    pub operations: &'a [ResolvedOperation],
     pub event_budget: u64,
 }
 
 pub(crate) struct EditableRequest<'a> {
     pub definition: &'a Definition,
-    pub operations: &'a [ResolvedOperation],
     pub instance_id: &'a crate::ids::InstanceId,
     pub length: Tick,
 }
@@ -30,19 +27,12 @@ struct RepeatRequest<'a> {
     event_budget: u64,
 }
 
-pub(crate) fn resolve_composed(
+pub(crate) fn resolve_pattern(
     request: NoteRequest<'_>,
-    composed: Vec<crate::definition_composition::ComposedNote>,
-    work: &mut crate::definition_composition::WorkMeter,
+    pattern: &[PatternNote],
 ) -> Result<Vec<EffectiveNote>, CoreError> {
-    let pattern = crate::pattern_resolution::from_composed(
-        composed,
-        request.definition,
-        request.operations,
-        work,
-    )?;
     let notes = repeat_pattern(RepeatRequest {
-        pattern: &pattern,
+        pattern,
         definition: request.definition,
         instance: request.instance,
         track_id: request.track_id,
@@ -52,30 +42,24 @@ pub(crate) fn resolve_composed(
     Ok(notes)
 }
 
-pub(crate) fn editable_from_composed(
+pub(crate) fn editable_from_pattern(
     request: EditableRequest<'_>,
-    composed: Vec<crate::definition_composition::ComposedNote>,
-    work: &mut crate::definition_composition::WorkMeter,
+    pattern: Vec<PatternNote>,
 ) -> Result<Vec<Note>, CoreError> {
     let limit = request.definition.length.min(request.length);
-    let notes = crate::pattern_resolution::from_composed(
-        composed,
-        request.definition,
-        request.operations,
-        work,
-    )?
-    .into_iter()
-    .filter_map(|mut item| {
-        if item.note.start >= limit {
-            return None;
-        }
-        item.note.duration = item
-            .note
-            .duration
-            .min(Tick::from_ticks(limit.ticks() - item.note.start.ticks()));
-        Some(item.note)
-    })
-    .collect::<Vec<_>>();
+    let notes = pattern
+        .into_iter()
+        .filter_map(|mut item| {
+            if item.note.start >= limit {
+                return None;
+            }
+            item.note.duration = item
+                .note
+                .duration
+                .min(Tick::from_ticks(limit.ticks() - item.note.start.ticks()));
+            Some(item.note)
+        })
+        .collect::<Vec<_>>();
     crate::validation::validate_notes(&notes)?;
     crate::note_patch::validate_bounds(&notes, limit)?;
     validate_editable_ids(request.definition, request.instance_id, &notes)?;

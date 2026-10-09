@@ -12,7 +12,7 @@ pub(crate) struct InstanceResolution<'a> {
 }
 
 impl InstanceResolution<'_> {
-    pub fn operations(&self) -> Result<Vec<ResolvedOperation>, CoreError> {
+    pub fn validated_operations(&self) -> Result<Vec<ResolvedOperation>, CoreError> {
         let mut operations = Vec::new();
         for modifier in crate::modifier_plan::ordered(self.project, self.instance)? {
             let modifier_id = &modifier.id;
@@ -37,6 +37,12 @@ impl InstanceResolution<'_> {
                 modifier_id: None,
             }
         }));
+        crate::operation_validation::validate_operations(
+            &operations
+                .iter()
+                .map(|resolved| resolved.operation.clone())
+                .collect::<Vec<_>>(),
+        )?;
         Ok(operations)
     }
 }

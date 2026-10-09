@@ -4,6 +4,7 @@ use crate::ids::{DefinitionId, ModifierId, NoteId};
 use crate::music::{Definition, Note, Operation};
 use crate::resolution::ResolvedOperation;
 
+#[derive(Clone)]
 pub(crate) struct PatternNote {
     pub note: Note,
     pub definition_id: DefinitionId,
@@ -23,6 +24,7 @@ pub(crate) fn from_composed(
     definition: &Definition,
     operations: &[ResolvedOperation],
     work: &mut WorkMeter,
+    work_trace: &mut Vec<usize>,
 ) -> Result<Vec<PatternNote>, CoreError> {
     let mut pattern: Vec<_> = composed
         .into_iter()
@@ -43,6 +45,7 @@ pub(crate) fn from_composed(
                 definition,
             },
             work,
+            work_trace,
         )?;
     }
     Ok(pattern)
@@ -52,8 +55,11 @@ fn apply(
     notes: &mut Vec<PatternNote>,
     applied: PatternOperation<'_>,
     work: &mut WorkMeter,
+    work_trace: &mut Vec<usize>,
 ) -> Result<(), CoreError> {
-    work.consume(operation_work(notes.len(), applied.operation)?)?;
+    let operation_work = operation_work(notes.len(), applied.operation)?;
+    work_trace.push(operation_work);
+    work.consume(operation_work)?;
     match applied.operation {
         Operation::Transpose { semitones } => {
             for note in notes {
