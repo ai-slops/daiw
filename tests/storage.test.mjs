@@ -75,3 +75,16 @@ test('corrupt canonical payloads fail loudly instead of loading defaults', (t) =
   // When the project is opened, then integrity verification rejects it.
   assert.throws(() => store.get('song'), { code: 'CorruptProject' });
 });
+
+test('decoded audio cache metadata is additive and keyed by source renderer and format', (t) => {
+  // Given a newly opened project database.
+  const store = fixture(t);
+  // When its cache schema is inspected.
+  const columns = store.db.prepare('PRAGMA table_info(decoded_audio_cache)').all();
+  // Then cache identity and trusted descriptor fields are durable without changing asset rows.
+  assert.deepEqual(columns.map((column) => column.name), [
+    'source_hash', 'renderer_fingerprint', 'format_version', 'cache_id', 'sha256',
+    'frames', 'sample_rate', 'channels', 'byte_length', 'peaks128',
+  ]);
+  assert.equal(store.db.prepare('SELECT COUNT(*) AS total FROM assets').get().total, 0);
+});

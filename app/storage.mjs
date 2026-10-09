@@ -16,7 +16,20 @@ export class ProjectStore {
       CREATE TABLE IF NOT EXISTS journal (sequence INTEGER PRIMARY KEY, project_id TEXT NOT NULL, request_id TEXT NOT NULL, request_hash TEXT NOT NULL, method TEXT NOT NULL, principal TEXT NOT NULL, base_revision TEXT, revision TEXT NOT NULL, response TEXT NOT NULL, created_at TEXT NOT NULL, UNIQUE(project_id,request_id));
       CREATE TABLE IF NOT EXISTS undo_stack (project_id TEXT PRIMARY KEY, undo TEXT NOT NULL DEFAULT '[]', redo TEXT NOT NULL DEFAULT '[]');
       CREATE TABLE IF NOT EXISTS assets (id TEXT PRIMARY KEY, hash TEXT NOT NULL, name TEXT NOT NULL, metadata TEXT NOT NULL);
-      CREATE TABLE IF NOT EXISTS renders (key TEXT PRIMARY KEY, project_id TEXT NOT NULL, revision TEXT NOT NULL, profile TEXT NOT NULL, created_at TEXT NOT NULL);`);
+      CREATE TABLE IF NOT EXISTS renders (key TEXT PRIMARY KEY, project_id TEXT NOT NULL, revision TEXT NOT NULL, profile TEXT NOT NULL, created_at TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS decoded_audio_cache (
+        source_hash TEXT NOT NULL,
+        renderer_fingerprint TEXT NOT NULL,
+        format_version TEXT NOT NULL,
+        cache_id TEXT NOT NULL,
+        sha256 TEXT NOT NULL,
+        frames INTEGER NOT NULL,
+        sample_rate INTEGER NOT NULL,
+        channels INTEGER NOT NULL,
+        byte_length INTEGER NOT NULL,
+        peaks128 TEXT NOT NULL,
+        PRIMARY KEY(source_hash,renderer_fingerprint,format_version)
+      );`);
     if (this.db.prepare('SELECT value FROM project_meta WHERE key = ?').get('schemaVersion')?.value !== '1') {
       throw new ServiceError('MigrationRequired', 'Unsupported project database schema.', 500);
     }
