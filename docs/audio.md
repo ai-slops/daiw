@@ -1,6 +1,6 @@
 # Audio subsystem
 
-`daiw-audio` consumes the immutable `Snapshot` wire shape in `docs/contract.md`. It does not depend on `daiw-core`, so the renderer can remain a stable process boundary while core evolves.
+`daiw-audio` consumes the immutable `Snapshot` wire shape in `docs/contract.md`. Its production dependencies do not include `daiw-core`, so the renderer remains a stable process boundary while core evolves. A dev-only core dependency verifies actual snapshot compatibility.
 
 ## Offline renderer
 
@@ -42,13 +42,15 @@ Input/data validation and DSP validation are separate. The renderer now rejects 
 
 All checks run in offline/control-thread rendering or encoding, not in the audio callback. A successful render returns finite samples, and a failed render does not return partial audio. Restart the host after deploying a new renderer so `MediaStore.initialize` refreshes its binary fingerprint; render cache keys include that fingerprint. The host writes a WAV/cache record only after successful worker completion.
 
-The host can decode WAV, AIFF, or FLAC uploads into its content-addressed PCM cache without a second binary:
+Legacy callers can decode WAV, AIFF, or FLAC to resident JSON PCM without a second binary:
 
 ```sh
 cargo run -p daiw-audio --bin daiw-render -- --decode /absolute/path/to/upload.flac
 ```
 
 The JSON result is `{frames,sampleRate,channels,samples}` with interleaved `f32` PCM. Decoding is capped at 4,000,000 interleaved samples per source. The decoder checks each decoded packet's frame/channel capacity before allocating its conversion buffer or extending accumulated PCM and returns typed `ResourceLimit` on hostile compressed expansion.
+
+The HTTP host now uses `--decode-file` and `--render-file-backed` instead. These stream source PCM through checksummed managed binary files and 4,096-source-frame reads; they do not transfer full PCM arrays through JSON. See [offline-streaming.md](offline-streaming.md) for the binary format, new resource limits, integrity recovery and retained resident-output limitations.
 
 ## Browser API
 
