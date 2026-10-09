@@ -1,256 +1,268 @@
-import { loudnessMatchGain, updateMeter } from "./analysis";
-import { fetchServerRender, snapshotRevisionMatches } from "./server-render";
-import { beatAtSeconds, normalizeLoopBeat, secondsAtBeat, validateLoop } from "./transport";
-import { snapshotSchema } from "./types";
+import { AuditionPreparer } from "./audition-preparer";
+import { BoundaryGain } from "./boundary-gain";
+import {
+	createEngineControlState,
+	currentFrame,
+	engineState,
+	requireSnapshot,
+} from "./engine-control-state";
+import { EngineObservers } from "./engine-observers";
+import { EnginePlaybackRuntime } from "./engine-playback-runtime";
+import { EngineStreamSet } from "./engine-stream-set";
+import {
+	AudioEngineError,
+	type AudioEngineFault,
+	isAbortError,
+} from "./errors";
+import {
+	frameAtBeat,
+	loopFrames,
+	normalizedBeat,
+	normalizeFrame,
+	snapshotFrames,
+} from "./playback-frames";
+import { validateRenderedLoop } from "./rendered-loop";
+import { TransportIntent } from "./transport-intent";
 import type {
-  AudioEngineState,
-  AuditionSide,
-  LoopRange,
-  MasterMeter,
-  Snapshot,
-  StateListener,
-  TransportStatus,
+	AudioEngineState,
+	AuditionSide,
+	LoopRange,
+	MasterMeter,
+	Snapshot,
+	StateListener,
 } from "./types";
-
-export class AudioEngineError extends Error {
-  public constructor(message: string) {
-    super(message);
-    this.name = "AudioEngineError";
-  }
-}
+import { snapshotSchema } from "./types";
 
 export class DaiwAudioEngine {
-  readonly #context: AudioContext;
-  readonly #listeners = new Set<StateListener>();
-  readonly #auditions = new Map<AuditionSide, AudioBuffer>();
-  readonly #analyser: AnalyserNode;
-  readonly #meterSamples: Float32Array<ArrayBuffer>;
-  readonly #meter = { peak: 0, rms: 0, peakDb: -Infinity, rmsDb: -Infinity };
-  #snapshot: Snapshot | null = null;
-  #status: TransportStatus = "stopped";
-  #positionBeat = 0;
-  #startedAt = 0;
-  #loop: LoopRange | null = null;
-  #audition: AuditionSide | null = null;
-  #source: AudioBufferSourceNode | null = null;
-  #gain: GainNode | null = null;
-  #loudnessMatching = false;
+	readonly #context: AudioContext;
+	readonly #streams = new EngineStreamSet();
+	readonly #gain: BoundaryGain;
+	readonly #preparer: AuditionPreparer;
+	readonly #intent: TransportIntent;
+	readonly #observers: EngineObservers;
+	readonly #state = createEngineControlState();
+	readonly #runtime: EnginePlaybackRuntime;
 
-  public constructor(context: AudioContext = new AudioContext()) {
-    this.#context = context;
-    this.#analyser = context.createAnalyser();
-    this.#analyser.fftSize = 2_048;
-    this.#analyser.smoothingTimeConstant = 0;
-    this.#meterSamples = new Float32Array(this.#analyser.fftSize);
-    this.#analyser.connect(context.destination);
-  }
+	public constructor(
+		context?: AudioContext,
+		private readonly ownsContext = context === undefined,
+	) {
+		this.#context = context ?? new AudioContext();
+		this.#observers = new EngineObservers(this.#context);
+		this.#gain = new BoundaryGain(this.#context, this.#observers.input);
+		this.#preparer = new AuditionPreparer(
+			this.#context,
+			{
+				currentRevision: () => this.#state.snapshot?.revision ?? null,
+				currentFrame: () =>
+					currentFrame(this.#state, this.#context.currentTime),
+			},
+			this.#streams.budget,
+		);
+		this.#intent = new TransportIntent(this.#preparer, this.#gain);
+		this.#runtime = new EnginePlaybackRuntime({
+			context: this.#context,
+			state: this.#state,
+			streams: this.#streams,
+			gain: this.#gain,
+			intent: this.#intent,
+			emitState: () => this.#emit(),
+			emitFault: (fault) => this.#observers.emitFault(fault),
+		});
+	}
 
-  public setSnapshot(input: unknown): Snapshot {
-    this.stop();
-    this.#auditions.clear();
-    this.#audition = null;
-    this.#loop = null;
-    const snapshot = Object.freeze(snapshotSchema.parse(input));
-    this.#snapshot = snapshot;
-    this.#emit();
-    return snapshot;
-  }
+	public setSnapshot(input: unknown): Snapshot {
+		this.stop();
+		this.#streams.clear();
+		this.#state.audition = null;
+		this.#state.loop = null;
+		const snapshot = Object.freeze(snapshotSchema.parse(input));
+		this.#state.snapshot = snapshot;
+		this.#emit();
+		return snapshot;
+	}
 
-  public async prepare(projectId: string): Promise<void> {
-    const expectedRevision = this.#requireSnapshot().revision;
-    const buffer = await fetchServerRender(this.#context, { projectId, expectedRevision });
-    this.#assertCurrentRevision(expectedRevision);
-    this.#auditions.set("a", buffer);
-    this.selectAB("a");
-  }
+	public async activate(): Promise<void> {
+		await this.#context.resume();
+	}
 
-  public async prepareAB(projectId: string, proposalId: string): Promise<void> {
-    const expectedRevision = this.#requireSnapshot().revision;
-    const [a, b] = await Promise.all([
-      fetchServerRender(this.#context, { projectId, expectedRevision }),
-      fetchServerRender(this.#context, { projectId, expectedRevision, proposalId }),
-    ]);
-    this.#assertCurrentRevision(expectedRevision);
-    this.#auditions.set("a", a);
-    this.#auditions.set("b", b);
-    this.selectAB("a");
-  }
+	public async prepare(projectId: string): Promise<void> {
+		const snapshot = requireSnapshot(this.#state);
+		const playing = this.#state.status === "playing";
+		const initialFrame = playing
+			? currentFrame(this.#state, this.#context.currentTime)
+			: this.#state.positionFrame;
+		const prepared = await this.#preparer.single(
+			{ projectId, expectedRevision: snapshot.revision },
+			{ snapshot, initialFrame, playing },
+		);
+		if (prepared === null) return;
+		await this.#runtime.installPrepared(prepared, playing);
+	}
 
-  public async play(): Promise<void> {
-    this.#requireSnapshot();
-    this.#requireBuffer();
-    if (this.#status === "playing") return;
-    await this.#context.resume();
-    this.#status = "playing";
-    this.#startedAt = this.#context.currentTime;
-    this.#schedule();
-    this.#emit();
-  }
+	public async prepareAB(projectId: string, proposalId: string): Promise<void> {
+		const snapshot = requireSnapshot(this.#state);
+		const playing = this.#state.status === "playing";
+		const initialFrame = playing
+			? currentFrame(this.#state, this.#context.currentTime)
+			: this.#state.positionFrame;
+		const prepared = await this.#preparer.pair(
+			{
+				reference: { projectId, expectedRevision: snapshot.revision },
+				candidate: {
+					projectId,
+					expectedRevision: snapshot.revision,
+					proposalId,
+				},
+			},
+			{ snapshot, initialFrame, playing },
+		);
+		if (prepared === null) return;
+		await this.#runtime.installPrepared(prepared, playing);
+	}
 
-  public pause(): void {
-    if (this.#status !== "playing") return;
-    this.#positionBeat = this.getPositionBeats();
-    this.#status = "paused";
-    this.#clearSource();
-    this.#emit();
-  }
+	public async play(): Promise<void> {
+		const revision = requireSnapshot(this.#state).revision;
+		await this.activate();
+		this.#intent.cancelPending();
+		if (this.#state.status === "playing") return;
+		if (
+			this.#state.loop === null &&
+			this.#state.positionFrame >= snapshotFrames(requireSnapshot(this.#state))
+		)
+			return;
+		if (this.#state.snapshot?.revision !== revision) return;
+		const stream = this.#streams.required(this.#state.audition);
+		const operation = this.#intent.renewSystem();
+		try {
+			await stream.prime(this.#state.positionFrame, this.#intent.signal);
+		} catch (reason) {
+			if (operation !== this.#intent.current || isAbortError(reason)) return;
+			throw reason;
+		}
+		this.#intent.assert(
+			operation,
+			revision,
+			this.#state.snapshot?.revision ?? null,
+		);
+		await this.#runtime.begin(operation);
+	}
 
-  public stop(): void {
-    this.#clearSource();
-    this.#status = "stopped";
-    this.#positionBeat = 0;
-    this.#emit();
-  }
+	public pause(): void {
+		this.#intent.renewUser();
+		if (this.#state.status !== "playing") return;
+		this.#state.positionFrame = currentFrame(
+			this.#state,
+			this.#context.currentTime,
+		);
+		this.#runtime.clear();
+		this.#state.status = "paused";
+		this.#emit();
+	}
 
-  public seek(beat: number): void {
-    const snapshot = this.#requireSnapshot();
-    const clamped = Math.max(0, Math.min(beat, snapshot.length));
-    this.#positionBeat = normalizeLoopBeat(clamped, this.#loop);
-    if (this.#status === "playing") {
-      this.#clearSource();
-      this.#startedAt = this.#context.currentTime;
-      this.#schedule();
-    }
-    this.#emit();
-  }
+	public stop(): void {
+		this.#intent.renewUser();
+		this.#runtime.clear();
+		this.#state.status = "stopped";
+		this.#state.positionFrame = 0;
+		this.#emit();
+	}
 
-  public setLoop(loop: LoopRange | null): void {
-    const snapshot = this.#requireSnapshot();
-    this.#loop = loop === null ? null : validateLoop(loop, snapshot.length);
-    if (this.#status === "playing") this.seek(this.getPositionBeats());
-    this.#emit();
-  }
+	public seek(beat: number): void {
+		const snapshot = requireSnapshot(this.#state);
+		const playing = this.#state.status === "playing";
+		this.#state.positionFrame = frameAtBeat(
+			snapshot,
+			normalizedBeat(snapshot, beat, this.#state.loop),
+		);
+		this.#runtime.restart(playing);
+	}
 
-  public setLoudnessMatching(enabled: boolean): void {
-    this.#loudnessMatching = enabled;
-    if (this.#status === "playing") this.seek(this.getPositionBeats());
-    this.#emit();
-  }
+	public setLoop(loop: LoopRange | null): void {
+		const snapshot = requireSnapshot(this.#state);
+		const playing = this.#state.status === "playing";
+		if (playing)
+			this.#state.positionFrame = currentFrame(
+				this.#state,
+				this.#context.currentTime,
+			);
+		this.#state.loop = validateRenderedLoop(snapshot, loop);
+		this.#state.positionFrame = normalizeFrame(
+			this.#state.positionFrame,
+			loopFrames(snapshot, this.#state.loop),
+		);
+		this.#runtime.restart(playing);
+	}
 
-  public selectAB(side: AuditionSide): void {
-    if (!this.#auditions.has(side)) throw new AudioEngineError(`audition ${side} is not prepared`);
-    const playing = this.#status === "playing";
-    if (playing) this.#positionBeat = this.getPositionBeats();
-    this.#clearSource();
-    this.#audition = side;
-    if (playing) {
-      this.#startedAt = this.#context.currentTime;
-      this.#schedule();
-    }
-    this.#emit();
-  }
+	public setLoudnessMatching(enabled: boolean): void {
+		this.#state.loudnessMatching = enabled;
+		this.#gain.set(
+			this.#streams.gain(this.#state.audition, this.#state.loudnessMatching),
+		);
+		this.#emit();
+	}
 
-  public getPositionBeats(): number {
-    const snapshot = this.#snapshot;
-    if (snapshot === null || this.#status !== "playing") return this.#positionBeat;
-    const elapsed = this.#context.currentTime - this.#startedAt;
-    const timing = snapshot.tempoMap ?? snapshot.tempo;
-    const absoluteSeconds = secondsAtBeat(this.#positionBeat, timing) + elapsed;
-    if (this.#loop === null) return Math.min(snapshot.length, beatAtSeconds(absoluteSeconds, timing));
-    const loopStart = secondsAtBeat(this.#loop.start, timing);
-    const loopEnd = secondsAtBeat(this.#loop.end, timing);
-    const positionSeconds = absoluteSeconds < loopEnd
-      ? absoluteSeconds
-      : loopStart + ((absoluteSeconds - loopStart) % (loopEnd - loopStart));
-    return beatAtSeconds(positionSeconds, timing);
-  }
+	public selectAB(side: AuditionSide): void {
+		const selected = this.#streams.installed.get(side);
+		if (selected === undefined)
+			throw new AudioEngineError(`audition ${side} is not prepared`);
+		const playing = this.#state.status === "playing";
+		if (playing)
+			this.#state.positionFrame = currentFrame(
+				this.#state,
+				this.#context.currentTime,
+			);
+		const operation = this.#intent.renewUser();
+		this.#state.audition = side;
+		if (!playing)
+			this.#gain.set(
+				this.#streams.gain(this.#state.audition, this.#state.loudnessMatching),
+			);
+		if (playing && selected.hasFrame(this.#state.positionFrame))
+			this.#runtime.startPrepared(operation);
+		else if (playing) {
+			this.#runtime.clear();
+			this.#state.status = "paused";
+			void this.#runtime.refillSelection(selected, operation);
+		}
+		this.#emit();
+	}
 
-  public getState(): AudioEngineState {
-    return {
-      status: this.#status,
-      positionBeat: this.getPositionBeats(),
-      loop: this.#loop,
-      revision: this.#snapshot?.revision ?? null,
-      audition: this.#audition,
-      loudnessMatching: this.#loudnessMatching,
-    };
-  }
+	public getPositionBeats(): number {
+		return this.getState().positionBeat;
+	}
 
-  public getMeter(): MasterMeter {
-    if (this.#status === "playing") {
-      this.#analyser.getFloatTimeDomainData(this.#meterSamples);
-    } else {
-      this.#meterSamples.fill(0);
-    }
-    return updateMeter(this.#meterSamples, this.#meter);
-  }
+	public getState(): AudioEngineState {
+		return engineState(this.#state, this.#context.currentTime);
+	}
 
-  public subscribe(listener: StateListener): () => void {
-    this.#listeners.add(listener);
-    listener(this.getState());
-    return () => this.#listeners.delete(listener);
-  }
+	public getMeter(): MasterMeter {
+		return this.#observers.meter(this.#state.status);
+	}
 
-  #schedule(): void {
-    const snapshot = this.#requireSnapshot();
-    const buffer = this.#requireBuffer();
-    const source = this.#context.createBufferSource();
-    const gain = this.#context.createGain();
-    const timing = snapshot.tempoMap ?? snapshot.tempo;
-    this.#positionBeat = normalizeLoopBeat(this.#positionBeat, this.#loop);
-    source.buffer = buffer;
-    if (this.#loop !== null) {
-      source.loop = true;
-      source.loopStart = secondsAtBeat(this.#loop.start, timing);
-      source.loopEnd = secondsAtBeat(this.#loop.end, timing);
-    }
-    gain.gain.value = this.#selectedGain(buffer);
-    source.connect(gain).connect(this.#analyser);
-    source.onended = () => this.#handleEnded(source, snapshot.length);
-    source.start(0, secondsAtBeat(this.#positionBeat, timing));
-    this.#source = source;
-    this.#gain = gain;
-  }
+	public getStreamingMetrics() {
+		return this.#streams.metrics();
+	}
 
-  #selectedGain(selected: AudioBuffer): number {
-    const reference = this.#auditions.get("a");
-    return this.#loudnessMatching && this.#audition === "b" && reference !== undefined
-      ? loudnessMatchGain(reference, selected)
-      : 1;
-  }
+	public subscribe(listener: StateListener): () => void {
+		return this.#observers.subscribe(listener, this.getState());
+	}
 
-  #handleEnded(source: AudioBufferSourceNode, endBeat: number): void {
-    if (source !== this.#source || this.#loop !== null) return;
-    this.#source = null;
-    this.#gain = null;
-    this.#positionBeat = endBeat;
-    this.#status = "stopped";
-    this.#emit();
-  }
+	public subscribeFault(
+		listener: (fault: AudioEngineFault) => void,
+	): () => void {
+		return this.#observers.subscribeFault(listener);
+	}
 
-  #clearSource(): void {
-    if (this.#source === null) return;
-    this.#source.onended = null;
-    this.#source.stop();
-    this.#source.disconnect();
-    this.#gain?.disconnect();
-    this.#source = null;
-    this.#gain = null;
-  }
+	public async dispose(): Promise<void> {
+		this.stop();
+		this.#streams.clear();
+		this.#observers.dispose();
+		this.#gain.dispose();
+		if (this.ownsContext) await this.#context.close();
+	}
 
-  #requireSnapshot(): Snapshot {
-    if (this.#snapshot === null) throw new AudioEngineError("setSnapshot must be called first");
-    return this.#snapshot;
-  }
-
-  #assertCurrentRevision(captured: string): void {
-    const current = this.#snapshot?.revision ?? null;
-    if (!snapshotRevisionMatches(captured, current)) {
-      throw new AudioEngineError(
-        `snapshot changed while preparing audio: captured ${captured}, current ${current ?? "missing"}`,
-      );
-    }
-  }
-
-  #requireBuffer(): AudioBuffer {
-    if (this.#audition === null) throw new AudioEngineError("prepare must complete before playback");
-    const buffer = this.#auditions.get(this.#audition);
-    if (buffer === undefined) throw new AudioEngineError("selected server render is unavailable");
-    return buffer;
-  }
-
-  #emit(): void {
-    const state = this.getState();
-    for (const listener of this.#listeners) listener(state);
-  }
+	#emit(): void {
+		this.#observers.emit(this.getState());
+	}
 }

@@ -29,6 +29,7 @@ const silentMeter: MasterMeter = {
 export const useAudio = (project: Project) => {
 	const engineRef = useRef<DaiwAudioEngine | null>(null);
 	const unsubscribeRef = useRef<(() => void) | null>(null);
+	const unsubscribeFaultRef = useRef<(() => void) | null>(null);
 	const snapshotRef = useRef<Snapshot | null>(null);
 	const [state, setState] = useState<AudioEngineState>(initialState);
 	const [meter, setMeter] = useState<MasterMeter>(silentMeter);
@@ -43,6 +44,9 @@ export const useAudio = (project: Project) => {
 		const snapshot = snapshotRef.current;
 		if (snapshot !== null) engine.setSnapshot(snapshot);
 		unsubscribeRef.current = engine.subscribe(setState);
+		unsubscribeFaultRef.current = engine.subscribeFault((fault) =>
+			setError(fault.message),
+		);
 		engineRef.current = engine;
 		return engine;
 	}, []);
@@ -94,7 +98,16 @@ export const useAudio = (project: Project) => {
 		return () => window.cancelAnimationFrame(frame);
 	}, [state.status]);
 
-	useEffect(() => () => unsubscribeRef.current?.(), []);
+	useEffect(
+		() => () => {
+			unsubscribeRef.current?.();
+			unsubscribeFaultRef.current?.();
+			const engine = engineRef.current;
+			engineRef.current = null;
+			if (engine !== null) void engine.dispose();
+		},
+		[],
+	);
 
 	const prepare = useCallback(
 		async (proposalId?: string) => {
@@ -120,6 +133,7 @@ export const useAudio = (project: Project) => {
 	const toggle = useCallback(async () => {
 		const engine = ensureEngine();
 		try {
+			await engine.activate();
 			if (state.audition === null) await prepare();
 			if (state.status === "playing") engine.pause();
 			else await engine.play();

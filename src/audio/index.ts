@@ -1,14 +1,26 @@
-export { AudioEngineError, DaiwAudioEngine } from "./engine";
+export {
+	loudnessMatchGain,
+	measureBufferRms,
+	meterFromSamples,
+} from "./analysis";
+export { DaiwAudioEngine } from "./engine";
+export type { AudioEngineFault } from "./errors";
+export { AudioEngineError, UnderrunError } from "./errors";
 export { ServerRenderError } from "./server-render";
-export { loudnessMatchGain, measureBufferRms, meterFromSamples } from "./analysis";
-export { beatAtSeconds, beatAtTime, normalizeLoopBeat, secondsAtBeat, validateLoop } from "./transport";
-export { snapshotSchema } from "./types";
+export {
+	beatAtSeconds,
+	beatAtTime,
+	normalizeLoopBeat,
+	secondsAtBeat,
+	validateLoop,
+} from "./transport";
 export type {
-  AudioEngineState,
-  AuditionSide,
-  LoopRange,
-  MasterMeter,
-  Snapshot,
-  StateListener,
-  TransportStatus,
+	AudioEngineState,
+	AuditionSide,
+	LoopRange,
+	MasterMeter,
+	Snapshot,
+	StateListener,
+	TransportStatus,
 } from "./types";
+export { snapshotSchema } from "./types";
