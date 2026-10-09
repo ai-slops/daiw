@@ -1,108 +1,49 @@
 use crate::error::CoreError;
-use crate::ids::{HunkId, ProposalId};
-use crate::music::Operation;
-use crate::operation_validation::validate_reusable_operations;
 use crate::project::Project;
-use crate::proposal_adapter::{operation_description, parse_request};
 use crate::proposal_model::{
-    Acceptance, AcceptanceOutcome, Hunk, Proposal, ProposalAnchor, ProposalParams, ProposalStatus,
-    Rejection, SlotBinding,
+    Acceptance, AcceptanceOutcome, Proposal, ProposalParams, ProposalStatus, Rejection,
 };
-use crate::proposal_rebase::assess;
 use crate::protocol::Principal;
 use crate::revision::{advance, musical_fingerprint, require_revision};
 use crate::validation::validate_project;
 use std::collections::BTreeSet;
 
 pub fn create_proposal(project: &Project, params: ProposalParams) -> Result<Proposal, CoreError> {
-    require_revision(project, &params.expected_revision)?;
-    let instance = project
-        .instances
-        .iter()
-        .find(|instance| instance.id == params.instance_id)
-        .ok_or_else(|| CoreError::NotFound(params.instance_id.to_string()))?;
-    let definition = project
-        .definitions
-        .iter()
-        .find(|definition| definition.id == instance.definition_id)
-        .ok_or_else(|| CoreError::NotFound(instance.definition_id.to_string()))?;
-    let operations = match params.operations {
-        Some(operations) => operations,
-        None => parse_request(&params.request)?,
-    };
-    if operations.is_empty() {
-        return Err(CoreError::UnsupportedCapability(params.request));
-    }
-    validate_reusable_operations(&operations)?;
-    let composed_notes = crate::definition_composition::compose(project, definition)?
-        .into_iter()
-        .map(|item| item.note)
-        .collect::<Vec<_>>();
-    let definition_revisions = crate::definition_graph::nested_revisions(project, &definition.id)?;
-    let hunks = operations
-        .into_iter()
-        .enumerate()
-        .map(|(index, operation)| -> Result<Hunk, CoreError> {
-            let slot_binding = match &operation {
-                Operation::ReplaceSlot { slot, .. } => {
-                    let selected = crate::modifier_binding::select_slot_notes(
-                        definition,
-                        slot,
-                        &composed_notes,
-                    )
-                    .ok_or_else(|| {
-                        CoreError::InvalidProject(format!("unknown note slot {slot}"))
-                    })?;
-                    let note_ids = selected.note_ids;
-                    Some(SlotBinding {
-                        slot: slot.clone(),
-                        cardinality: note_ids.len(),
-                        note_ids,
-                        definition_revision: definition.revision,
-                        mode: crate::proposal_model::RebaseMode::Strong,
-                        definition_revisions: definition_revisions.clone(),
-                    })
-                }
-                Operation::Transpose { .. }
-                | Operation::Velocity { .. }
-                | Operation::Gain { .. }
-                | Operation::AddNotes { .. }
-                | Operation::PatchNotes(_)
-                | Operation::SetParameter { .. } => None,
-            };
-            Ok(Hunk {
-                id: HunkId::new_random(),
-                title: format!("Change {}", index + 1),
-                description: operation_description(&operation).to_owned(),
-                operation,
-                dependencies: Vec::new(),
-                accepted: false,
-                slot_binding,
-            })
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-    Ok(Proposal {
-        id: ProposalId::new_random(),
-        name: "Agent proposal".to_owned(),
-        request: params.request,
-        base_revision: project.revision.clone(),
-        instance_id: params.instance_id,
-        status: ProposalStatus::Pending,
-        hunks,
-        base_anchor: Some(ProposalAnchor {
-            definition_id: definition.id.clone(),
-            definition_revision: definition.revision,
-            note_ids: composed_notes.iter().map(|note| note.id.clone()).collect(),
-            definition_revisions,
-        }),
-        base_fingerprint: Some(musical_fingerprint(project)?),
-    })
+    let mut cache = crate::composition_cache::uncached_session();
+    create_proposal_with_session(
+        project,
+        params,
+        &mut crate::composition_cache::ResolutionSession::new(&mut cache),
+    )
+}
+
+pub(crate) fn create_proposal_with_session(
+    project: &Project,
+    params: ProposalParams,
+    session: &mut crate::composition_cache::ResolutionSession<'_>,
+) -> Result<Proposal, CoreError> {
+    crate::proposal_creation::create(project, params, session)
 }
 
 pub fn accept_proposal(
     project: &Project,
     principal: Principal,
     acceptance: Acceptance,
+) -> Result<AcceptanceOutcome, CoreError> {
+    let mut cache = crate::composition_cache::uncached_session();
+    accept_proposal_with_session(
+        project,
+        principal,
+        acceptance,
+        &mut crate::composition_cache::ResolutionSession::new(&mut cache),
+    )
+}
+
+pub(crate) fn accept_proposal_with_session(
+    project: &Project,
+    principal: Principal,
+    acceptance: Acceptance,
+    session: &mut crate::composition_cache::ResolutionSession<'_>,
 ) -> Result<AcceptanceOutcome, CoreError> {
     if principal != Principal::Human {
         return Err(CoreError::PermissionDenied);
@@ -163,11 +104,13 @@ pub fn accept_proposal(
         .map(|base| musical_fingerprint(&changed).map(|current| current != *base))
         .transpose()?
         .unwrap_or(changed.proposals[proposal_index].base_revision != changed.revision);
-    let assessment = assess(
+    let assessment = crate::proposal_rebase::assess_metered(
         &changed,
         &changed.proposals[proposal_index],
         &selected,
         fingerprint_changed,
+        &mut crate::definition_composition::WorkMeter::new(),
+        session,
     )?;
     if !assessment.diagnostics.is_empty() {
         let details = assessment
