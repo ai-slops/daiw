@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
+import { createHash } from 'node:crypto';
 import { once } from 'node:events';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -199,7 +200,7 @@ test('thrown domain errors preserve their HTTP status and code', async (t) => {
 
 test('master export is a non-silent WAV bound to the project revision', async (t) => {
   // Given the synthetic shared-chorus fixture.
-  const { base, rpc } = await fixture(t);
+  const { base, rpc, service } = await fixture(t);
   const created = await rpc({ method: 'project.create', params: { fixture: true } });
   const state = created.body.state;
   // When the renderer exports through the live HTTP surface.
@@ -210,7 +211,19 @@ test('master export is a non-silent WAV bound to the project revision', async (t
   assert.equal(bytes.subarray(0, 4).toString(), 'RIFF');
   assert.equal(bytes.subarray(8, 12).toString(), 'WAVE');
   assert.equal(response.headers.get('x-daiw-revision'), state.revision);
+  assert.equal(Number(response.headers.get('content-length')), bytes.length);
+  assert.match(response.headers.get('etag'), /^"[a-f0-9]{64}"$/);
   assert.ok(bytes.subarray(44).some((sample) => sample !== 0));
+  // A warm streamed download preserves headers and exact bytes from the verified cache.
+  const warm = await fetch(`${base}/api/projects/${state.id}/render.wav`);
+  const warmBytes = Buffer.from(await warm.arrayBuffer());
+  assert.equal(warm.headers.get('etag'), response.headers.get('etag'));
+  assert.equal(warm.headers.get('x-daiw-revision'), state.revision);
+  assert.equal(Number(warm.headers.get('content-length')), warmBytes.length);
+  assert.deepEqual(warmBytes, bytes);
+  const key = response.headers.get('etag').slice(1, -1);
+  const metadata = service.store.db.prepare('SELECT * FROM render_cache_files WHERE key=?').get(key);
+  assert.equal(metadata.sha256, createHash('sha256').update(bytes).digest('hex'));
 });
 
 test('an imported source still renders after all rebuildable caches are removed', async (t) => {

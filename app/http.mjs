@@ -1,6 +1,7 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { join, extname } from 'node:path';
+import { pipeline } from 'node:stream/promises';
 import { z } from 'zod';
 import { ServiceError } from './errors.mjs';
 import { rpcSchema } from './service.mjs';
@@ -73,9 +74,25 @@ export function createHandler({ service, media, staticRoot, agentToken, allowedH
             const exported = await service.execute({ projectId, method: 'project.export', params: {} });
             return send(response, exported.ok ? 200 : domainStatus(exported.error.code), exported.ok ? exported.result : exported);
           }
-          const rendered = await media.render(projectId, url.searchParams.get('proposalId'), url.searchParams.get('expectedRevision'));
-          response.writeHead(200, { 'content-type': 'audio/wav', 'content-length': rendered.wav.length, 'X-DAIW-Revision': rendered.revision, ETag: `"${rendered.key}"`, 'cache-control': 'private, no-cache', 'Content-Disposition': 'inline; filename="daiw-mix.wav"' });
-          return response.end(rendered.wav);
+          const controller = new AbortController();
+          const abort = () => { if (!response.writableEnded) controller.abort(); };
+          request.once('aborted', abort);
+          response.once('close', abort);
+          let rendered;
+          try {
+            rendered = await media.render(projectId, url.searchParams.get('proposalId'), url.searchParams.get('expectedRevision'), controller.signal);
+            if (controller.signal.aborted || response.destroyed) throw new ServiceError('RequestAborted', 'Audio download was cancelled.', 499);
+            response.writeHead(200, { 'content-type': 'audio/wav', 'content-length': rendered.descriptor.byteLength, 'X-DAIW-Revision': rendered.revision, ETag: `"${rendered.key}"`, 'cache-control': 'private, no-cache', 'Content-Disposition': 'inline; filename="daiw-mix.wav"' });
+            await pipeline(rendered.handle.createReadStream({ start: 0, autoClose: false }), response);
+            return;
+          } catch (error) {
+            if (response.headersSent || response.destroyed) { response.destroy(); return; }
+            throw error;
+          } finally {
+            request.off('aborted', abort);
+            response.off('close', abort);
+            await rendered?.handle.close();
+          }
         }
         throw new ServiceError('NotFound', 'API method not found.', 404);
       }
@@ -91,6 +108,7 @@ export function createHandler({ service, media, staticRoot, agentToken, allowedH
       response.writeHead(200, { 'content-type': contentTypes[extname(path)] ?? 'text/html; charset=utf-8', 'cache-control': pathname.includes('/assets/') ? 'public,max-age=31536000,immutable' : 'no-cache' });
       response.end(request.method === 'HEAD' ? undefined : file);
     } catch (error) {
+      if (response.headersSent || response.destroyed) { response.destroy(); return; }
       if (error instanceof ServiceError) return send(response, error.status, { ok: false, error: { code: error.code, message: error.message } });
       if (error instanceof z.ZodError || error instanceof SyntaxError || error instanceof TypeError) return send(response, 400, { ok: false, error: { code: 'InvalidRequest', message: error.message } });
       // Only the host boundary reports unexpected I/O failures; never log project payloads.
