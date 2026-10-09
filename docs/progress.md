@@ -4,6 +4,8 @@ Audit date: **2026-09-22**. Target: the supplied 2026-09-01 v0.1 implementation 
 
 ## Outcome
 
+**2026-10-09 offline-streaming follow-up:** the host now decodes sources directly to managed checksummed binary PCM and renders from bounded 4,096-source-frame blocks. Imports above the old four-million-sample cap work; corrupt caches rebuild from verified originals. Validation: **266 Rust / 68 host / 71 client tests**, plus real large-source HTTP render/corruption recovery and sampled decoder RSS. See [offline-streaming.md](offline-streaming.md). Output buffers, browser audio and native playback remain resident; this is not full-session or RT read-ahead streaming.
+
 **2026-10-09 instance-resolution follow-up:** post-modifier patterns are now reused per logical instance, independently of source composition. Placement/crop/track output remains live, local edits invalidate one instance, and source edits invalidate direct and nested dependents. Exact operation-work traces preserve budget errors. Validation: **242 Rust / 56 host / 71 client tests** plus live HTTP/WAV equivalence. See [instance-resolution.md](instance-resolution.md). DSP/signal compilation and disk streaming remain open.
 
 **2026-10-09 incremental-resolution follow-up:** the persistent worker now reuses dependency-keyed source compositions with bounded LRU retention and unchanged logical work limits. Snapshot/explain/query/dry-run/edit/proposal paths use explicit cache sessions; current guards and operations still run. Differential and live HTTP verification passed: **230 Rust / 52 host / 71 client tests**. See [incremental-resolution.md](incremental-resolution.md). This is not full incremental DSP compilation or disk streaming.

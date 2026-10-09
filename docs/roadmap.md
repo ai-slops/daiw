@@ -6,6 +6,8 @@ Completed: identity-based instance note patches, scoped dry-run note-target/impa
 
 ## Stage 0: Headless domain foundation
 
+Offline source-streaming follow-up completed: direct binary PCM decoding, managed integrity-checked caches, bounded file reads and larger decoded sources. Remaining streaming work is output transport, browser/native long-session playback and real-time read-ahead; signal/DSP compilation and large-session qualification also remain open. See [offline-streaming.md](offline-streaming.md).
+
 Instance-resolution follow-up completed: bounded post-modifier pattern reuse with live guards, exact work replay and separate human-only diagnostics. Next substantial runtime work is disk streaming and signal/DSP compilation; final-event reuse and measured large-session profiling are also unfinished. See [instance-resolution.md](instance-resolution.md).
 
 Incremental-resolution follow-up completed: worker-local source-composition reuse, content-based dependency invalidation, deterministic bounded LRU and human-only cache diagnostics. Remaining incremental work includes operation/instance-level reuse, signal compilation, streaming and measured large-session budgets. See [incremental-resolution.md](incremental-resolution.md).
