@@ -47,6 +47,48 @@ pub enum AudioError {
     InvalidArguments(String),
     #[error("decoded PCM resource limit exceeded: attempted {attempted} samples, limit {limit}")]
     ResourceLimit { limit: usize, attempted: usize },
+    #[error("--decode-file requires absolute input and output paths")]
+    InvalidDecodeFilePath,
+    #[error("decoded packet exceeds the 8 MiB pre-conversion limit")]
+    DecodedPacketTooLarge,
+    #[error("decoded stream changes sample rate or channel count")]
+    ChangingPcmFormat,
+    #[error("decoded PCM contains a non-finite sample")]
+    NonFiniteDecodedPcm,
+    #[error("PCM sample rate {sample_rate} is outside 8000..=192000")]
+    UnsupportedPcmSampleRate { sample_rate: u32 },
+    #[error("PCM channel count {channels} is outside 1..=8")]
+    UnsupportedPcmChannels { channels: u16 },
+    #[error("PCM duration exceeds 180 seconds")]
+    PcmDurationTooLong,
+    #[error("PCM payload is invalid or exceeds 512 MiB")]
+    PcmPayloadTooLarge,
+    #[error("PCM header is invalid")]
+    InvalidPcmHeader,
+    #[error("PCM file length does not match its header")]
+    InvalidPcmLength,
+    #[error("numeric conversion failed: {0}")]
+    IntegerConversion(#[from] std::num::TryFromIntError),
+    #[error("binary field has an invalid length: {0}")]
+    SliceConversion(#[from] std::array::TryFromSliceError),
+    #[error("--source-root requires an absolute directory")]
+    InvalidSourceRoot,
+    #[error("file-backed render supports at most {limit} sources")]
+    TooManySources { limit: usize },
+    #[error("source files exceed the 1 GiB aggregate limit")]
+    SourceFilesTooLarge,
+    #[error("source path escapes its root")]
+    SourceEscapesRoot,
+    #[error("source {asset_id} was supplied but is not referenced")]
+    ExtraSource { asset_id: String },
+    #[error("cacheId and sha256 must be 64 lowercase hexadecimal characters")]
+    InvalidSha256,
+    #[error("PCM metadata does not match the source descriptor")]
+    PcmMetadataMismatch,
+    #[error("PCM payload SHA-256 does not match its header")]
+    PcmPayloadHashMismatch,
+    #[error("PCM whole-file SHA-256 does not match the source descriptor")]
+    PcmFileHashMismatch,
     #[cfg(feature = "native")]
     #[error("no default audio output device is available")]
     NoOutputDevice,
