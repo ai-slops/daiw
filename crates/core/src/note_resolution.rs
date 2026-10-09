@@ -1,15 +1,11 @@
 use crate::error::CoreError;
-use crate::ids::{ModifierId, TrackId};
-use crate::music::{Definition, EffectiveNote, Instance, Note, NoteOrigin, Operation};
+use crate::ids::{NoteId, TrackId};
+use crate::music::{Definition, EffectiveNote, Instance, Note, NoteOrigin};
+use crate::pattern_resolution::PatternNote;
 use crate::resolution::ResolvedOperation;
 use crate::time::Tick;
 
 pub const EFFECTIVE_EVENT_LIMIT: u64 = 100_000;
-
-struct PatternNote {
-    note: Note,
-    modifier_ids: Vec<ModifierId>,
-}
 
 pub struct NoteRequest<'a> {
     pub definition: &'a Definition,
@@ -19,10 +15,11 @@ pub struct NoteRequest<'a> {
     pub event_budget: u64,
 }
 
-struct PatternOperation<'a> {
-    operation: &'a Operation,
-    modifier_id: Option<&'a ModifierId>,
-    definition: &'a Definition,
+pub(crate) struct EditableRequest<'a> {
+    pub definition: &'a Definition,
+    pub operations: &'a [ResolvedOperation],
+    pub instance_id: &'a crate::ids::InstanceId,
+    pub length: Tick,
 }
 
 struct RepeatRequest<'a> {
@@ -33,27 +30,17 @@ struct RepeatRequest<'a> {
     event_budget: u64,
 }
 
-pub fn resolve_notes(request: NoteRequest<'_>) -> Result<Vec<EffectiveNote>, CoreError> {
-    let mut pattern: Vec<_> = request
-        .definition
-        .notes
-        .iter()
-        .cloned()
-        .map(|note| PatternNote {
-            note,
-            modifier_ids: Vec::new(),
-        })
-        .collect();
-    for resolved in request.operations {
-        apply_pattern_operation(
-            &mut pattern,
-            PatternOperation {
-                operation: &resolved.operation,
-                modifier_id: resolved.modifier_id.as_ref(),
-                definition: request.definition,
-            },
-        )?;
-    }
+pub(crate) fn resolve_composed(
+    request: NoteRequest<'_>,
+    composed: Vec<crate::definition_composition::ComposedNote>,
+    work: &mut crate::definition_composition::WorkMeter,
+) -> Result<Vec<EffectiveNote>, CoreError> {
+    let pattern = crate::pattern_resolution::from_composed(
+        composed,
+        request.definition,
+        request.operations,
+        work,
+    )?;
     let notes = repeat_pattern(RepeatRequest {
         pattern: &pattern,
         definition: request.definition,
@@ -65,104 +52,67 @@ pub fn resolve_notes(request: NoteRequest<'_>) -> Result<Vec<EffectiveNote>, Cor
     Ok(notes)
 }
 
-fn apply_pattern_operation(
-    notes: &mut Vec<PatternNote>,
-    applied: PatternOperation<'_>,
+pub(crate) fn editable_from_composed(
+    request: EditableRequest<'_>,
+    composed: Vec<crate::definition_composition::ComposedNote>,
+    work: &mut crate::definition_composition::WorkMeter,
+) -> Result<Vec<Note>, CoreError> {
+    let limit = request.definition.length.min(request.length);
+    let notes = crate::pattern_resolution::from_composed(
+        composed,
+        request.definition,
+        request.operations,
+        work,
+    )?
+    .into_iter()
+    .filter_map(|mut item| {
+        if item.note.start >= limit {
+            return None;
+        }
+        item.note.duration = item
+            .note
+            .duration
+            .min(Tick::from_ticks(limit.ticks() - item.note.start.ticks()));
+        Some(item.note)
+    })
+    .collect::<Vec<_>>();
+    crate::validation::validate_notes(&notes)?;
+    crate::note_patch::validate_bounds(&notes, limit)?;
+    validate_editable_ids(request.definition, request.instance_id, &notes)?;
+    Ok(notes)
+}
+
+fn validate_editable_ids(
+    definition: &Definition,
+    instance_id: &crate::ids::InstanceId,
+    notes: &[Note],
 ) -> Result<(), CoreError> {
-    match applied.operation {
-        Operation::Transpose { semitones } => {
-            for note in notes {
-                note.note.pitch += semitones;
-                mark(note, applied.modifier_id);
-            }
+    let mut ids = std::collections::BTreeSet::new();
+    for note in notes {
+        let id = if definition.children.is_empty() {
+            NoteId::from(format!("{}@{instance_id}#0", note.id))
+        } else {
+            crate::note_identity::nested_effective(instance_id, 0, &note.id)?
+        };
+        if !ids.insert(id) {
+            return Err(CoreError::InvalidProject(
+                "effective note id collision in editable pattern".into(),
+            ));
         }
-        Operation::Velocity { factor } => {
-            for note in notes {
-                note.note.velocity = (note.note.velocity * factor).clamp(0.0, 1.0);
-                mark(note, applied.modifier_id);
-            }
-        }
-        Operation::AddNotes { notes: added } => {
-            notes.extend(added.iter().cloned().map(|note| PatternNote {
-                note,
-                modifier_ids: applied.modifier_id.iter().cloned().cloned().collect(),
-            }))
-        }
-        Operation::ReplaceSlot {
-            slot,
-            notes: replacements,
-        } => {
-            if slot == "notes" {
-                notes.clear();
-            } else {
-                let bounds = applied.definition.slots.get(slot).ok_or_else(|| {
-                    CoreError::InvalidProject(format!("unknown note slot {slot}"))
-                })?;
-                if replacements.iter().any(|note| {
-                    note.start < bounds.start
-                        || note.start >= bounds.end
-                        || note.start + note.duration > bounds.end
-                }) {
-                    return Err(CoreError::InvalidProject(format!(
-                        "replacement notes must fit slot {slot}"
-                    )));
-                }
-                notes
-                    .retain(|note| note.note.start < bounds.start || note.note.start >= bounds.end);
-            }
-            notes.extend(replacements.iter().cloned().map(|note| PatternNote {
-                note,
-                modifier_ids: applied.modifier_id.iter().cloned().cloned().collect(),
-            }));
-        }
-        Operation::PatchNotes(patch) => {
-            patch.validate_targets(notes.iter().map(|note| &note.note.id))?;
-            let removed: std::collections::BTreeSet<_> = patch.removed.iter().collect();
-            let updates: std::collections::BTreeMap<_, _> =
-                patch.updates.iter().map(|note| (&note.id, note)).collect();
-            notes.retain(|note| !removed.contains(&note.note.id));
-            for note in notes.iter_mut() {
-                if let Some(updated) = updates.get(&note.note.id) {
-                    note.note = (*updated).clone();
-                }
-            }
-            notes.extend(patch.added.iter().cloned().map(|note| PatternNote {
-                note,
-                modifier_ids: Vec::new(),
-            }));
-        }
-        Operation::Gain { .. } | Operation::SetParameter { .. } => {}
     }
     Ok(())
 }
 
 fn repeat_pattern(request: RepeatRequest<'_>) -> Result<Vec<EffectiveNote>, CoreError> {
-    let instance_ticks = u64::try_from(request.instance.length.ticks())
-        .map_err(|_| CoreError::InvalidProject("instance length must be positive".to_owned()))?;
-    let definition_ticks = u64::try_from(request.definition.length.ticks())
-        .map_err(|_| CoreError::InvalidProject("definition length must be positive".to_owned()))?;
-    if definition_ticks == 0 {
+    if request.pattern.is_empty() {
+        return Ok(Vec::new());
+    }
+    if request.definition.length.ticks() <= 0 {
         return Err(CoreError::InvalidProject(
             "definition length must be positive".to_owned(),
         ));
     }
-    let repetitions = instance_ticks.div_ceil(definition_ticks);
-    let pattern_count = u64::try_from(request.pattern.len()).map_err(|_| {
-        CoreError::InvalidProject("pattern note count exceeds platform limits".to_owned())
-    })?;
-    let event_count = repetitions.checked_mul(pattern_count).ok_or_else(|| {
-        CoreError::InvalidProject("effective event budget arithmetic overflow".to_owned())
-    })?;
-    if event_count > request.event_budget {
-        return Err(CoreError::InvalidProject(format!(
-            "effective event budget exceeded: {event_count} > {} remaining",
-            request.event_budget
-        )));
-    }
-    let capacity = usize::try_from(event_count).map_err(|_| {
-        CoreError::InvalidProject("effective event budget exceeds platform limits".to_owned())
-    })?;
-    let mut output = Vec::with_capacity(capacity);
+    let mut output = Vec::new();
     let mut loop_start = 0_i64;
     let mut loop_index = 0_u64;
     while loop_start < request.instance.length.ticks() {
@@ -173,12 +123,29 @@ fn repeat_pattern(request: RepeatRequest<'_>) -> Result<Vec<EffectiveNote>, Core
             }
             let available = request.instance.length.ticks() - local_start;
             let duration = pattern_note.note.duration.ticks().min(available);
+            let emitted = u64::try_from(output.len()).map_err(|_| {
+                CoreError::InvalidProject("effective event count exceeds platform limits".into())
+            })?;
+            if emitted >= request.event_budget {
+                return Err(CoreError::InvalidProject(format!(
+                    "effective event budget exceeded: more than {} remaining",
+                    request.event_budget
+                )));
+            }
             output.push(EffectiveNote {
-                id: format!(
-                    "{}@{}#{loop_index}",
-                    pattern_note.note.id, request.instance.id
-                )
-                .into(),
+                id: if request.definition.children.is_empty() {
+                    format!(
+                        "{}@{}#{loop_index}",
+                        pattern_note.note.id, request.instance.id
+                    )
+                    .into()
+                } else {
+                    crate::note_identity::nested_effective(
+                        &request.instance.id,
+                        loop_index,
+                        &pattern_note.note.id,
+                    )?
+                },
                 start: request.instance.start + Tick::from_ticks(local_start),
                 duration: Tick::from_ticks(duration),
                 pitch: pattern_note.note.pitch,
@@ -186,22 +153,20 @@ fn repeat_pattern(request: RepeatRequest<'_>) -> Result<Vec<EffectiveNote>, Core
                 instance_id: request.instance.id.clone(),
                 track_id: request.track_id.clone(),
                 origin: NoteOrigin {
-                    definition_id: request.definition.id.clone(),
-                    note_id: pattern_note.note.id.clone(),
+                    definition_id: pattern_note.definition_id.clone(),
+                    note_id: pattern_note.source_note_id.clone(),
                     modifier_ids: pattern_note.modifier_ids.clone(),
+                    definition_path: pattern_note.definition_path.clone(),
+                    instance_loop_index: pattern_note.definition_path.as_ref().map(|_| loop_index),
                 },
             });
         }
-        loop_start += request.definition.length.ticks();
-        loop_index += 1;
+        loop_start = loop_start
+            .checked_add(request.definition.length.ticks())
+            .ok_or_else(|| CoreError::InvalidProject("effective event timing overflow".into()))?;
+        loop_index = loop_index.checked_add(1).ok_or_else(|| {
+            CoreError::InvalidProject("effective event loop index overflow".into())
+        })?;
     }
     Ok(output)
-}
-
-fn mark(note: &mut PatternNote, modifier_id: Option<&ModifierId>) {
-    if let Some(id) = modifier_id
-        && !note.modifier_ids.contains(id)
-    {
-        note.modifier_ids.push(id.clone());
-    }
 }

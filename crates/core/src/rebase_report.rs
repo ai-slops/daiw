@@ -2,7 +2,6 @@ use crate::error::{CoreError, ModifierBindingIssue, NoteTargetIssue};
 use crate::ids::{DefinitionId, InstanceId, ModifierId};
 use crate::project::Project;
 use crate::protocol::{Diagnostic, Severity};
-use crate::resolver::editable_notes;
 use serde::Serialize;
 
 #[derive(Serialize)]
@@ -31,6 +30,8 @@ pub enum InstanceCheck {
     Clean {
         definition_id: DefinitionId,
         definition_revision: u64,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        definition_revisions: Option<Vec<crate::definition_graph::DefinitionRevision>>,
         note_count: usize,
         #[serde(skip_serializing_if = "Vec::is_empty")]
         unbound_modifier_ids: Vec<ModifierId>,
@@ -38,6 +39,8 @@ pub enum InstanceCheck {
     Conflict {
         definition_id: DefinitionId,
         definition_revision: Option<u64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        definition_revisions: Option<Vec<crate::definition_graph::DefinitionRevision>>,
         diagnostic: Diagnostic,
         #[serde(skip_serializing_if = "Option::is_none")]
         target: Option<NoteTargetIssue>,
@@ -60,7 +63,11 @@ pub enum ResolutionAction {
     RebaseModifier,
 }
 
-pub fn check(project: &Project, id: &InstanceId) -> InstanceCheck {
+pub fn check(
+    project: &Project,
+    id: &InstanceId,
+    work: &mut crate::definition_composition::WorkMeter,
+) -> InstanceCheck {
     let Some(instance) = project.instances.iter().find(|instance| instance.id == *id) else {
         return InstanceCheck::Absent;
     };
@@ -71,11 +78,20 @@ pub fn check(project: &Project, id: &InstanceId) -> InstanceCheck {
     let unbound_modifier_ids = crate::binding_validation::unbound_modifier_ids(project, instance);
     let result = definition
         .ok_or_else(|| CoreError::NotFound(instance.definition_id.to_string()))
-        .and_then(|definition| editable_notes(project, id).map(|notes| (definition, notes.len())));
+        .and_then(|definition| {
+            crate::resolver::editable_notes_metered(project, id, work)
+                .map(|notes| (definition, notes.len()))
+        });
     match result {
         Ok((definition, count)) => InstanceCheck::Clean {
             definition_id: definition.id.clone(),
             definition_revision: definition.revision,
+            definition_revisions: crate::definition_graph::nested_revisions(
+                project,
+                &definition.id,
+            )
+            .ok()
+            .flatten(),
             note_count: count,
             unbound_modifier_ids,
         },
@@ -126,6 +142,11 @@ pub fn check(project: &Project, id: &InstanceId) -> InstanceCheck {
             InstanceCheck::Conflict {
                 definition_id: instance.definition_id.clone(),
                 definition_revision: definition.map(|definition| definition.revision),
+                definition_revisions: definition.and_then(|definition| {
+                    crate::definition_graph::nested_revisions(project, &definition.id)
+                        .ok()
+                        .flatten()
+                }),
                 diagnostic: Diagnostic {
                     code: error.code().to_owned(),
                     severity: Severity::Blocking,

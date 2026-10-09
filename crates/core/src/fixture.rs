@@ -161,6 +161,7 @@ fn chorus() -> Definition {
                 end: tick(8.0),
             },
         )]),
+        children: Vec::new(),
     }
 }
 
@@ -182,6 +183,7 @@ fn definition(identity: FixtureIdentity<'_>, length: f64, pitches: &[(f64, f64)]
             .collect(),
         revision: 0,
         slots: BTreeMap::new(),
+        children: Vec::new(),
     }
 }
 

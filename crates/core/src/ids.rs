@@ -62,6 +62,7 @@ macro_rules! string_id {
 string_id!(ProjectId);
 string_id!(Revision);
 string_id!(DefinitionId);
+string_id!(ChildPlacementId);
 string_id!(NoteId);
 string_id!(TrackId);
 string_id!(InstanceId);

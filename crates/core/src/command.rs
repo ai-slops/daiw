@@ -1,5 +1,7 @@
-use crate::ids::{DefinitionId, InstanceId, ModifierId, RegionId, Revision, TrackId};
-use crate::music::{Instrument, Note, Operation};
+use crate::ids::{
+    ChildPlacementId, DefinitionId, InstanceId, ModifierId, RegionId, Revision, TrackId,
+};
+use crate::music::{ChildPlacement, Instrument, Note, Operation};
 use crate::project::{Asset, AudioRegion};
 use crate::time::Tick;
 use daiw_timing::{MeterMap, TempoMap};
@@ -52,6 +54,24 @@ pub enum Command {
     AddDefinition {
         name: String,
         length: Tick,
+        notes: Vec<Note>,
+    },
+    AddDefinitionChild {
+        parent_definition_id: DefinitionId,
+        definition_id: DefinitionId,
+        start: Tick,
+        length: Tick,
+    },
+    SetDefinitionChild {
+        parent_definition_id: DefinitionId,
+        child: ChildPlacement,
+    },
+    RemoveDefinitionChild {
+        parent_definition_id: DefinitionId,
+        child_id: ChildPlacementId,
+    },
+    EditDefinitionNotes {
+        definition_id: DefinitionId,
         notes: Vec<Note>,
     },
     Instantiate {

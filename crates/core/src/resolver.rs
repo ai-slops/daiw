@@ -1,10 +1,9 @@
 use crate::error::CoreError;
 use crate::ids::{InstanceId, ProposalId};
+use crate::instance_resolution::InstanceResolution;
 use crate::music::Note;
-use crate::note_resolution::{EFFECTIVE_EVENT_LIMIT, NoteRequest, resolve_notes};
+use crate::note_resolution::{EFFECTIVE_EVENT_LIMIT, NoteRequest};
 use crate::project::{Project, Snapshot};
-use crate::proposal_model::ProposalStatus;
-use crate::resolution::ResolvedOperation;
 use crate::track_resolution::derive_track;
 use crate::validation::{validate_operations, validate_project};
 
@@ -12,7 +11,8 @@ pub fn snapshot(
     project: &Project,
     proposal_id: Option<&ProposalId>,
 ) -> Result<Snapshot, CoreError> {
-    let rendered = with_preview(project, proposal_id)?;
+    let mut work = crate::definition_composition::WorkMeter::new();
+    let rendered = crate::proposal_preview::apply(project, proposal_id, &mut work)?;
     validate_project(&rendered)?;
     let mut tracks = rendered.tracks.clone();
     let mut notes = Vec::new();
@@ -27,7 +27,15 @@ pub fn snapshot(
             .iter()
             .find(|track| track.id == instance.track_id)
             .ok_or_else(|| CoreError::NotFound(instance.track_id.to_string()))?;
-        let operations = operations_for_instance(&rendered, instance)?;
+        let composed =
+            crate::definition_composition::compose_metered(&rendered, definition, &mut work)?;
+        let operations = InstanceResolution {
+            project: &rendered,
+            instance,
+            definition,
+            composed: &composed,
+        }
+        .operations()?;
         validate_operations(
             &operations
                 .iter()
@@ -56,13 +64,17 @@ pub fn snapshot(
             .ok_or_else(|| {
                 CoreError::InvalidProject("effective event budget exhausted".to_owned())
             })?;
-        notes.extend(resolve_notes(NoteRequest {
-            definition,
-            instance,
-            track_id: &track_id,
-            operations: &operations,
-            event_budget,
-        })?);
+        notes.extend(crate::note_resolution::resolve_composed(
+            NoteRequest {
+                definition,
+                instance,
+                track_id: &track_id,
+                operations: &operations,
+                event_budget,
+            },
+            composed,
+            &mut work,
+        )?);
     }
     crate::effective_validation::validate(&notes)?;
     notes.sort_by(|left, right| {
@@ -96,6 +108,18 @@ pub fn snapshot(
 }
 
 pub(crate) fn editable_notes(project: &Project, id: &InstanceId) -> Result<Vec<Note>, CoreError> {
+    editable_notes_metered(
+        project,
+        id,
+        &mut crate::definition_composition::WorkMeter::new(),
+    )
+}
+
+pub(crate) fn editable_notes_metered(
+    project: &Project,
+    id: &InstanceId,
+    work: &mut crate::definition_composition::WorkMeter,
+) -> Result<Vec<Note>, CoreError> {
     let instance = project
         .instances
         .iter()
@@ -106,100 +130,82 @@ pub(crate) fn editable_notes(project: &Project, id: &InstanceId) -> Result<Vec<N
         .iter()
         .find(|definition| definition.id == instance.definition_id)
         .ok_or_else(|| CoreError::NotFound(instance.definition_id.to_string()))?;
-    let mut pattern_instance = instance.clone();
-    pattern_instance.start = crate::time::Tick::default();
-    pattern_instance.length = definition.length.min(instance.length);
-    let operations = operations_for_instance(project, instance)?;
+    let composed = crate::definition_composition::compose_metered(project, definition, work)?;
+    let operations = InstanceResolution {
+        project,
+        instance,
+        definition,
+        composed: &composed,
+    }
+    .operations()?;
     validate_operations(
         &operations
             .iter()
             .map(|item| item.operation.clone())
             .collect::<Vec<_>>(),
     )?;
-    Ok(resolve_notes(NoteRequest {
-        definition,
-        instance: &pattern_instance,
-        track_id: &instance.track_id,
-        operations: &operations,
-        event_budget: EFFECTIVE_EVENT_LIMIT,
-    })?
-    .into_iter()
-    .map(|note| Note {
-        id: note.origin.note_id,
-        start: note.start,
-        duration: note.duration,
-        pitch: note.pitch,
-        velocity: note.velocity,
-    })
-    .collect())
+    crate::note_resolution::editable_from_composed(
+        crate::note_resolution::EditableRequest {
+            definition,
+            operations: &operations,
+            instance_id: &instance.id,
+            length: instance.length,
+        },
+        composed,
+        work,
+    )
 }
 
-fn with_preview(project: &Project, proposal_id: Option<&ProposalId>) -> Result<Project, CoreError> {
-    let mut rendered = project.clone();
-    let Some(id) = proposal_id else {
-        return Ok(rendered);
-    };
-    let proposal = project
-        .proposals
-        .iter()
-        .find(|proposal| proposal.id == *id)
-        .ok_or_else(|| CoreError::NotFound(id.to_string()))?;
-    match proposal.status {
-        ProposalStatus::Pending | ProposalStatus::PartiallyAccepted => {}
-        ProposalStatus::Accepted | ProposalStatus::Rejected => {
-            return Err(CoreError::ProposalClosed);
-        }
-    }
-    let instance = rendered
-        .instances
-        .iter_mut()
-        .find(|instance| instance.id == proposal.instance_id)
-        .ok_or_else(|| CoreError::NotFound(proposal.instance_id.to_string()))?;
-    instance.overrides.extend(
-        proposal
-            .hunks
-            .iter()
-            .filter(|hunk| !hunk.accepted)
-            .map(|hunk| hunk.operation.clone()),
-    );
-    Ok(rendered)
-}
-
-fn operations_for_instance(
+pub(crate) fn explain_notes(
     project: &Project,
-    instance: &crate::music::Instance,
-) -> Result<Vec<ResolvedOperation>, CoreError> {
-    let mut operations = Vec::new();
-    for modifier in crate::modifier_plan::ordered(project, instance)? {
-        let modifier_id = &modifier.id;
-        if let Some(binding) = instance.modifier_bindings.get(modifier_id) {
-            let definition = project
-                .definitions
-                .iter()
-                .find(|definition| definition.id == instance.definition_id)
-                .ok_or_else(|| CoreError::NotFound(instance.definition_id.to_string()))?;
-            crate::modifier_binding::check(binding, definition, modifier)?;
-        }
-        operations.extend(
-            modifier
-                .operations
-                .iter()
-                .cloned()
-                .map(|operation| ResolvedOperation {
-                    operation,
-                    modifier_id: Some(modifier_id.clone()),
-                }),
-        );
+    id: &InstanceId,
+) -> Result<(Vec<Note>, Vec<crate::music::CompositionNote>), CoreError> {
+    let mut work = crate::definition_composition::WorkMeter::new();
+    let instance = project
+        .instances
+        .iter()
+        .find(|instance| instance.id == *id)
+        .ok_or_else(|| CoreError::NotFound(id.to_string()))?;
+    let definition = project
+        .definitions
+        .iter()
+        .find(|definition| definition.id == instance.definition_id)
+        .ok_or_else(|| CoreError::NotFound(instance.definition_id.to_string()))?;
+    let composed = crate::definition_composition::compose_metered(project, definition, &mut work)?;
+    let composition = composed
+        .iter()
+        .cloned()
+        .map(|item| crate::music::CompositionNote {
+            id: item.note.id,
+            start: item.note.start,
+            duration: item.note.duration,
+            pitch: item.note.pitch,
+            velocity: item.note.velocity,
+            origin: crate::music::NoteOrigin {
+                definition_id: item.definition_id,
+                note_id: item.source_note_id,
+                modifier_ids: Vec::new(),
+                definition_path: item.definition_path,
+                instance_loop_index: None,
+            },
+        })
+        .collect();
+    let operations = InstanceResolution {
+        project,
+        instance,
+        definition,
+        composed: &composed,
     }
-    operations.extend(
-        instance
-            .overrides
-            .iter()
-            .cloned()
-            .map(|operation| ResolvedOperation {
-                operation,
-                modifier_id: None,
-            }),
-    );
-    Ok(operations)
+    .operations()?;
+    let editable = crate::note_resolution::editable_from_composed(
+        crate::note_resolution::EditableRequest {
+            definition,
+            operations: &operations,
+            instance_id: &instance.id,
+            length: instance.length,
+        },
+        composed,
+        &mut work,
+    )?;
+    Ok((editable, composition))
 }

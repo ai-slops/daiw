@@ -87,9 +87,37 @@ pub fn apply_command(project: &mut Project, command: Command) -> Result<String, 
                 notes,
                 revision: 0,
                 slots: std::collections::BTreeMap::new(),
+                children: Vec::new(),
             });
             Ok("Added definition".to_owned())
         }
+        Command::AddDefinitionChild {
+            parent_definition_id,
+            definition_id,
+            start,
+            length,
+        } => crate::definition_mutation::add_child(
+            project,
+            parent_definition_id,
+            crate::music::ChildPlacement {
+                id: crate::ids::ChildPlacementId::new_random(),
+                definition_id,
+                start,
+                length,
+            },
+        ),
+        Command::SetDefinitionChild {
+            parent_definition_id,
+            child,
+        } => crate::definition_mutation::set_child(project, parent_definition_id, child),
+        Command::RemoveDefinitionChild {
+            parent_definition_id,
+            child_id,
+        } => crate::definition_mutation::remove_child(project, parent_definition_id, child_id),
+        Command::EditDefinitionNotes {
+            definition_id,
+            notes,
+        } => crate::definition_mutation::edit_notes(project, definition_id, notes),
         Command::Instantiate {
             definition_id,
             track_id,

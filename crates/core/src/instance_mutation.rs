@@ -21,13 +21,7 @@ pub fn edit_notes(
         .ok_or_else(|| CoreError::NotFound(instance_id.to_string()))?;
     match scope {
         EditScope::Source => {
-            let definition = project
-                .definitions
-                .iter_mut()
-                .find(|item| item.id == definition_id)
-                .ok_or_else(|| CoreError::NotFound(definition_id.to_string()))?;
-            definition.notes = notes;
-            definition.revision += 1;
+            return crate::definition_mutation::edit_notes_legacy(project, definition_id, notes);
         }
         EditScope::Instance => {
             let definition_length = project
@@ -121,7 +115,7 @@ fn capture_binding(
         .iter()
         .find(|modifier| modifier.id == *modifier_id)
         .ok_or_else(|| CoreError::NotFound(modifier_id.to_string()))?;
-    crate::modifier_binding::capture(definition, modifier)
+    crate::modifier_binding::capture(project, definition, modifier)
 }
 
 pub fn find_instance_mut<'a>(

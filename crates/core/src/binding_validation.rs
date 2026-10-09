@@ -12,6 +12,15 @@ pub fn validate(instance: &Instance) -> Result<(), CoreError> {
                 "invalid modifier binding {id}"
             )));
         }
+        if binding
+            .definition_revisions
+            .as_ref()
+            .is_some_and(|revisions| !crate::definition_graph::revisions_are_sorted(revisions))
+        {
+            return Err(CoreError::InvalidProject(format!(
+                "invalid modifier binding {id} definition revisions"
+            )));
+        }
         for (name, slot) in &binding.slots {
             let unique: BTreeSet<_> = slot.note_ids.iter().collect();
             if name.trim().is_empty()

@@ -65,6 +65,28 @@ pub fn analyze(
         .map(|track| &track.id)
         .collect();
     let mut affected: BTreeSet<_> = requested.iter().cloned().collect();
+    let definition_ids: BTreeSet<_> = before
+        .definitions
+        .iter()
+        .map(|definition| definition.id.clone())
+        .chain(
+            after
+                .definitions
+                .iter()
+                .map(|definition| definition.id.clone()),
+        )
+        .collect();
+    let changed_definitions = definition_ids.into_iter().filter(|id| {
+        before.definitions.iter().find(|item| item.id == *id)
+            != after.definitions.iter().find(|item| item.id == *id)
+    });
+    let changed_definitions: Vec<_> = changed_definitions.collect();
+    let mut definition_closure =
+        crate::definition_graph::ancestor_closure(before, changed_definitions.iter().cloned());
+    definition_closure.extend(crate::definition_graph::ancestor_closure(
+        after,
+        changed_definitions,
+    ));
     for (id, instance) in old.iter().chain(&new) {
         let definition = &instance.definition_id;
         let track = &instance.track_id;
@@ -74,11 +96,7 @@ pub fn analyze(
             || before.meter != after.meter
             || before.meter_map != after.meter_map
             || old_solo != new_solo
-            || before
-                .definitions
-                .iter()
-                .find(|item| item.id == *definition)
-                != after.definitions.iter().find(|item| item.id == *definition)
+            || definition_closure.contains(definition)
             || before.tracks.iter().find(|item| item.id == *track)
                 != after.tracks.iter().find(|item| item.id == *track)
         {
@@ -89,8 +107,18 @@ pub fn analyze(
     let mut tracks = BTreeSet::new();
     let mut ranges = Vec::new();
     for id in &affected {
-        for instance in old.get(id).into_iter().chain(new.get(id)) {
-            definitions.insert(instance.definition_id.clone());
+        if let Some(instance) = old.get(id) {
+            definitions.extend(crate::definition_graph::descendant_closure(
+                before,
+                [instance.definition_id.clone()],
+            ));
+            tracks.insert(instance.track_id.clone());
+        }
+        if let Some(instance) = new.get(id) {
+            definitions.extend(crate::definition_graph::descendant_closure(
+                after,
+                [instance.definition_id.clone()],
+            ));
             tracks.insert(instance.track_id.clone());
         }
         ranges.push(InstancePreviewRange {
@@ -99,6 +127,7 @@ pub fn analyze(
             after: new.get(id).map(|instance| BeatRange::from(*instance)),
         });
     }
+    definitions.extend(definition_closure);
     (
         affected.into_iter().collect(),
         ChangeImpact {

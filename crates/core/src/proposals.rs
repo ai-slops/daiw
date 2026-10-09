@@ -34,16 +34,25 @@ pub fn create_proposal(project: &Project, params: ProposalParams) -> Result<Prop
         return Err(CoreError::UnsupportedCapability(params.request));
     }
     validate_reusable_operations(&operations)?;
+    let composed_notes = crate::definition_composition::compose(project, definition)?
+        .into_iter()
+        .map(|item| item.note)
+        .collect::<Vec<_>>();
+    let definition_revisions = crate::definition_graph::nested_revisions(project, &definition.id)?;
     let hunks = operations
         .into_iter()
         .enumerate()
         .map(|(index, operation)| -> Result<Hunk, CoreError> {
             let slot_binding = match &operation {
                 Operation::ReplaceSlot { slot, .. } => {
-                    let selected = crate::modifier_binding::select_slot(definition, slot)
-                        .ok_or_else(|| {
-                            CoreError::InvalidProject(format!("unknown note slot {slot}"))
-                        })?;
+                    let selected = crate::modifier_binding::select_slot_notes(
+                        definition,
+                        slot,
+                        &composed_notes,
+                    )
+                    .ok_or_else(|| {
+                        CoreError::InvalidProject(format!("unknown note slot {slot}"))
+                    })?;
                     let note_ids = selected.note_ids;
                     Some(SlotBinding {
                         slot: slot.clone(),
@@ -51,6 +60,7 @@ pub fn create_proposal(project: &Project, params: ProposalParams) -> Result<Prop
                         note_ids,
                         definition_revision: definition.revision,
                         mode: crate::proposal_model::RebaseMode::Strong,
+                        definition_revisions: definition_revisions.clone(),
                     })
                 }
                 Operation::Transpose { .. }
@@ -82,11 +92,8 @@ pub fn create_proposal(project: &Project, params: ProposalParams) -> Result<Prop
         base_anchor: Some(ProposalAnchor {
             definition_id: definition.id.clone(),
             definition_revision: definition.revision,
-            note_ids: definition
-                .notes
-                .iter()
-                .map(|note| note.id.clone())
-                .collect(),
+            note_ids: composed_notes.iter().map(|note| note.id.clone()).collect(),
+            definition_revisions,
         }),
         base_fingerprint: Some(musical_fingerprint(project)?),
     })
@@ -161,7 +168,7 @@ pub fn accept_proposal(
         &changed.proposals[proposal_index],
         &selected,
         fingerprint_changed,
-    );
+    )?;
     if !assessment.diagnostics.is_empty() {
         let details = assessment
             .diagnostics

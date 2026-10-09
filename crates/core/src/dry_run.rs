@@ -30,13 +30,14 @@ pub fn inspect(project: &Project, params: ChangeParams) -> DryRunResult {
     let requested = affected_instances(project, &params.command);
     match preview_change(project, &params.expected_revision, params.command.clone()) {
         Ok(candidate) => {
+            let mut work = crate::definition_composition::WorkMeter::new();
             let (affected, impact) = analyze(project, &candidate, &requested);
             let mut diagnostics = Vec::new();
             let instances = affected
                 .iter()
                 .map(|id| {
-                    let before = check(project, id);
-                    let after = check(&candidate, id);
+                    let before = check(project, id, &mut work);
+                    let after = check(&candidate, id, &mut work);
                     if let InstanceCheck::Conflict { diagnostic, .. } = &after {
                         diagnostics.push(diagnostic.clone());
                     }

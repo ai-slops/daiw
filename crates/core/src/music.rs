@@ -1,4 +1,4 @@
-use crate::ids::{DefinitionId, InstanceId, ModifierId, NoteId, TrackId};
+use crate::ids::{ChildPlacementId, DefinitionId, InstanceId, ModifierId, NoteId, TrackId};
 use crate::time::Tick;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -23,6 +23,17 @@ pub struct Definition {
     pub revision: u64,
     #[serde(default)]
     pub slots: BTreeMap<String, NoteSlot>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub children: Vec<ChildPlacement>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChildPlacement {
+    pub id: ChildPlacementId,
+    pub definition_id: DefinitionId,
+    pub start: Tick,
+    pub length: Tick,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -109,6 +120,21 @@ pub struct NoteOrigin {
     pub definition_id: DefinitionId,
     pub note_id: NoteId,
     pub modifier_ids: Vec<ModifierId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub definition_path: Option<Vec<DefinitionPathEntry>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instance_loop_index: Option<u64>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DefinitionPathEntry {
+    pub definition_id: DefinitionId,
+    pub definition_revision: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub placement_id: Option<ChildPlacementId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub loop_index: Option<u64>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -121,5 +147,16 @@ pub struct EffectiveNote {
     pub velocity: f64,
     pub instance_id: InstanceId,
     pub track_id: TrackId,
+    pub origin: NoteOrigin,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompositionNote {
+    pub id: NoteId,
+    pub start: Tick,
+    pub duration: Tick,
+    pub pitch: f64,
+    pub velocity: f64,
     pub origin: NoteOrigin,
 }

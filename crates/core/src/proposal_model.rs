@@ -37,6 +37,8 @@ pub struct SlotBinding {
     pub cardinality: usize,
     #[serde(default)]
     pub mode: RebaseMode,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub definition_revisions: Option<Vec<crate::definition_graph::DefinitionRevision>>,
 }
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
@@ -53,6 +55,8 @@ pub struct ProposalAnchor {
     pub definition_id: DefinitionId,
     pub definition_revision: u64,
     pub note_ids: Vec<NoteId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub definition_revisions: Option<Vec<crate::definition_graph::DefinitionRevision>>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]

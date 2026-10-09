@@ -46,6 +46,7 @@ pub fn validate_project(project: &Project) -> Result<(), CoreError> {
     let track_ids = unique_ids(project.tracks.iter().map(|item| &item.id), "track")?;
     let _instance_ids = unique_ids(project.instances.iter().map(|item| &item.id), "instance")?;
     let modifier_ids = unique_ids(project.modifiers.iter().map(|item| &item.id), "modifier")?;
+    crate::definition_graph::validate(project)?;
     for definition in &project.definitions {
         validate_notes(&definition.notes)?;
         if definition.length.ticks() <= 0 || definition.length.ticks() > MAX_TICKS {
@@ -138,7 +139,31 @@ pub fn validate_project(project: &Project) -> Result<(), CoreError> {
         validate_reusable_operations(&modifier.operations)?;
     }
     for proposal in &project.proposals {
+        if proposal.base_anchor.as_ref().is_some_and(|anchor| {
+            anchor
+                .definition_revisions
+                .as_ref()
+                .is_some_and(|revisions| !crate::definition_graph::revisions_are_sorted(revisions))
+        }) {
+            return Err(CoreError::InvalidProject(format!(
+                "proposal {} has invalid definition revisions",
+                proposal.id
+            )));
+        }
         for hunk in &proposal.hunks {
+            if hunk.slot_binding.as_ref().is_some_and(|binding| {
+                binding
+                    .definition_revisions
+                    .as_ref()
+                    .is_some_and(|revisions| {
+                        !crate::definition_graph::revisions_are_sorted(revisions)
+                    })
+            }) {
+                return Err(CoreError::InvalidProject(format!(
+                    "proposal hunk {} has invalid definition revisions",
+                    hunk.id
+                )));
+            }
             validate_reusable_operations(std::slice::from_ref(&hunk.operation))?;
         }
     }

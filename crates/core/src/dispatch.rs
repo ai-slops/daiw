@@ -184,10 +184,11 @@ fn explain(project: Project, params: ExplainParams) -> Result<(Project, Value), 
         .iter()
         .filter_map(|id| project.modifiers.iter().find(|modifier| modifier.id == *id))
         .collect();
-    let effective_notes = crate::resolver::editable_notes(&project, &instance.id)?;
+    let (effective_notes, composition_notes) =
+        crate::resolver::explain_notes(&project, &instance.id)?;
     let unbound = crate::binding_validation::unbound_modifier_ids(&project, instance);
     let modifier_plan = crate::modifier_plan::explain(&project, instance)?;
-    let result = json!({ "revision": project.revision, "instanceId": instance.id, "instance": instance, "definition": definition, "effectiveNotes": effective_notes, "modifiers": modifiers, "overrides": instance.overrides, "unboundModifierIds": unbound, "modifierPlan": modifier_plan });
+    let result = json!({ "revision": project.revision, "instanceId": instance.id, "instance": instance, "definition": definition, "compositionNotes": composition_notes, "effectiveNotes": effective_notes, "modifiers": modifiers, "overrides": instance.overrides, "unboundModifierIds": unbound, "modifierPlan": modifier_plan });
     Ok((project, result))
 }
 

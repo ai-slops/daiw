@@ -55,14 +55,24 @@ pub fn affected_instances(project: &Project, command: &Command) -> Vec<InstanceI
             .iter()
             .find(|instance| instance.id == *instance_id)
             .map(|target| {
-                project
-                    .instances
-                    .iter()
-                    .filter(|item| item.definition_id == target.definition_id)
-                    .map(|item| item.id.clone())
-                    .collect()
+                crate::definition_graph::dependent_instances(project, &target.definition_id)
             })
             .unwrap_or_default(),
+        Command::EditDefinitionNotes { definition_id, .. } => {
+            crate::definition_graph::dependent_instances(project, definition_id)
+        }
+        Command::AddDefinitionChild {
+            parent_definition_id,
+            ..
+        }
+        | Command::SetDefinitionChild {
+            parent_definition_id,
+            ..
+        }
+        | Command::RemoveDefinitionChild {
+            parent_definition_id,
+            ..
+        } => crate::definition_graph::dependent_instances(project, parent_definition_id),
         Command::MoveInstance { instance_id, .. }
         | Command::DuplicateInstance { instance_id }
         | Command::DeleteInstance { instance_id }

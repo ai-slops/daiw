@@ -2,6 +2,9 @@ mod binding_validation;
 mod change_impact;
 mod cli;
 mod command;
+mod definition_composition;
+mod definition_graph;
+mod definition_mutation;
 mod dispatch;
 mod dry_run;
 mod effective_validation;
@@ -11,6 +14,7 @@ mod fixture;
 mod fixture_values;
 mod ids;
 mod instance_mutation;
+mod instance_resolution;
 mod modifier_binding;
 mod modifier_plan;
 mod music;
@@ -18,6 +22,9 @@ mod mutation;
 mod native_features;
 mod native_format;
 mod native_loss;
+#[cfg(test)]
+mod nested_request_tests;
+mod note_identity;
 mod note_patch;
 mod note_resolution;
 mod note_selection;
@@ -25,9 +32,12 @@ mod note_selector;
 mod operation_access;
 mod operation_validation;
 mod ordering_graph;
+mod pattern_growth;
+mod pattern_resolution;
 mod project;
 mod proposal_adapter;
 mod proposal_model;
+mod proposal_preview;
 mod proposal_rebase;
 mod proposals;
 mod protocol;
@@ -48,6 +58,7 @@ pub use daiw_timing::{
     Beat, Curve, MAX_BEATS, MAX_TICKS, MeterMap, MeterPoint, TICKS_PER_BEAT, TempoMap, TempoPoint,
     Tick, TimingError,
 };
+pub use definition_graph::{DefinitionRevision, definition_revisions};
 pub use dispatch::dispatch;
 pub use engine::{apply_change, preview_change};
 pub use error::{BindingMismatch, CoreError, ErrorBody, ModifierBindingIssue, NoteTargetIssue};
