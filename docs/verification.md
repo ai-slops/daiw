@@ -2,7 +2,17 @@
 
 This file records evidence, not aspirations. The supplied design remains the product target; the current repository must not be described as having passed every stage-1 acceptance condition.
 
-## Latest follow-up: bounded WAV output and HTTP streaming (2026-10-09)
+## Latest follow-up: bounded browser playback (2026-10-09)
+
+- **97 host/API** and **98 client tests** passed with strict TypeScript/Vite build. Relevant TypeScript/MJS LSP diagnostics were clean. Rust did not change and was not rerun; its previous 276-test result remains historical. Existing upstream Zod annotation warnings remain non-blocking.
+- Host regressions cover render-info identity/RMS, exact 206 bytes and headers, invalid/oversized 416 ranges, stale keys/revisions/proposals, empty output, odd PCM scan boundaries, one full scan followed by leased chunk-only reads, file replacement 409, and lease isolation. Same-handle FD/abort checks remain green.
+- Client regressions cover first-start lead, adjacency, EOF/zero output, one-frame/collapsed loops, pinned loop assembly, mapped seeks, stale generations, aggregate 16-buffer reservations, silent RMS, deferred preparation versus stop/pause/seek, and source/gain boundary automation. No production `decodeAudioData()` path remains.
+- Independent review identified preparation cancelling live refills, silent transition gaps, EOF/loop edge cases and whole-file verification per range. These were corrected and re-reviewed with no remaining blocker under the documented local file-mutation trust model. Oversized modules introduced during implementation were extracted without changing APIs or assertions; both suites remained green afterward.
+- Actual Chromium played a **175-second fixture for 20 seconds**, switching B/A/B at 5/10/15 seconds and then seeking near EOF. All **108** observed WAV requests were ranged 206 responses with render keys. Active unique buffers peaked at **11/16**; no unexpected alerts, console warnings/errors or page errors occurred. This observes scheduling, not physical audibility or browser-process RSS.
+- Deferred A/B preparation left the existing playback running. Old sources stayed connected until a future stop boundary; replacement source and gain automation used that same time with an advanced logical offset. A six-second range stall paused at missing frame **48,000**, remained paused after release, and resumed from that frame only on explicit Play.
+- Lead independently drove playback, next-bar seek and pause through real Chromium: **14** range responses, all 206 with `renderKey`, maximum **96,000 bytes**, no page errors. There were no UI styling changes; physical gaplessness, suspended-tab resilience, native devices and extended-duration policy remain unqualified.
+
+## Bounded WAV output and HTTP streaming (2026-10-09)
 
 - **276 Rust**, **87 host/API**, **71 client tests** passed. Rust fmt, all-feature workspace/all-target Clippy, worker rebuild and strict TypeScript/Vite build passed; relevant Rust/MJS diagnostics were clean. Existing Zod annotation warnings remain non-blocking.
 - A legacy pre-refactor multi-track/noise/filter/4096-boundary golden retains SHA-256 `2a5be862a67a18c711b59d12329955ccfa442d0e39780be5287f9acd8b7cc9aa`. Tests cover block-size parity, persistent filters, absolute voice/region offsets, fractional source rounding, zero/max output, existing-file refusal, numeric failure cleanup and descriptor stdout failure.
