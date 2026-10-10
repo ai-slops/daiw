@@ -2,7 +2,18 @@
 
 This file records evidence, not aspirations. The supplied design remains the product target; the current repository must not be described as having passed every stage-1 acceptance condition.
 
-## Latest follow-up: bounded browser playback (2026-10-09)
+## Latest follow-up: native WAV read-ahead (2026-10-10)
+
+- **312 Rust tests with all features**, **97 host/API tests**, and **98 client tests** passed. Workspace all-feature build, Clippy with warnings denied, formatting and TypeScript/Vite build passed. Native CLI validation tests do not open devices. Existing upstream Zod annotation warnings remain non-blocking.
+- New coverage includes absolute-path/hash/header/frame validation, verified-handle pathname replacement, signed PCM conversion, 4096-frame crossings, variable callback sizes, pause/resume, stop, loop normalization, one-frame loops, EOF, bounded stale draining, allocation/deallocation instrumentation, runtime truncation faults and full-queue shutdown.
+- Independent review found control snapshots taken before synchronization, a missing runtime-after-readiness fault regression, and frame-limit error classification. Fixes use locked plan updates and latest-cursor CAS publication, deterministic forced interleavings, post-readiness truncation and early `TooManyFrames`. Re-review approved the implementation within the headless scope.
+- An independent public-library driver used a real **12,000-frame / 48,044-byte WAV**, consumed eight frames, paused, sought to **4,095**, crossed the block boundary, exercised loop `[5,8)` after an out-of-loop seek, stopped and shut down twice. The driver initially exposed an eight-frame skip caused by retained partial-block offset; regression now checks both correct frame 4,095 and pause-without-seek resuming frame 8. Final driver passed, with four stale blocks discarded.
+- Manual `daiw-play --help` and `--stream-wav ... --validate-only` succeeded with SHA-256 `fabced2ce6d34e17f35b1b2714bda9315e2af9893730d541b3762f4e0620df65`; an incorrect checksum exited nonzero. Descriptor dimensions matched 48-kHz stereo PCM16. No physical device was opened.
+- LSP checks passed for the streaming modules. The optional CPAL module was unlinked in the default LSP configuration, so all-feature compiler/Clippy/tests supplied that gate instead; no clean optional-module LSP result is claimed.
+- Payload ownership is bounded to eight ring blocks plus one worker and one callback block: **320 KiB decoded sample payload**, plus **16 KiB** raw PCM scratch and metadata/runtime/thread stacks. This is not a process-RSS or device-latency measurement. Device errors are counted atomically; callback code has no file I/O, locks or formatting.
+- Actual Windows/Linux device opening, audible output, xrun/latency matrices, Electron-to-native control and live DSP remain outstanding. Browser behavior was unchanged, so browser QA was not rerun in this batch.
+
+## Bounded browser playback (2026-10-09)
 
 - **97 host/API** and **98 client tests** passed with strict TypeScript/Vite build. Relevant TypeScript/MJS LSP diagnostics were clean. Rust did not change and was not rerun; its previous 276-test result remains historical. Existing upstream Zod annotation warnings remain non-blocking.
 - Host regressions cover render-info identity/RMS, exact 206 bytes and headers, invalid/oversized 416 ranges, stale keys/revisions/proposals, empty output, odd PCM scan boundaries, one full scan followed by leased chunk-only reads, file replacement 409, and lease isolation. Same-handle FD/abort checks remain green.
