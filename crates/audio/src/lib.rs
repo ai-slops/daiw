@@ -19,6 +19,7 @@ mod transport_concurrency;
 mod validate;
 mod wav;
 mod wav_file;
+mod wav_stream;
 
 pub use decode::{MAX_DECODED_SAMPLES, decode_file};
 pub use decode_stream::decode_to_pcm;
@@ -40,3 +41,9 @@ pub use transport::{
 };
 pub use wav::wav;
 pub use wav_file::WavFileDescriptor;
+pub use wav_stream::{
+    FrameLoopRange, FramePosition, MAX_WAV_STREAM_FRAMES, STREAM_BLOCK_FRAMES, STREAM_RING_BLOCKS,
+    Sha256Digest, StreamGeneration, WavStreamCallback, WavStreamControl, WavStreamError,
+    WavStreamFile, WavStreamOptions, WavStreamState, WavStreamStats, streaming_pair,
+    validate_wav_file,
+};
