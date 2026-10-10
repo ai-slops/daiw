@@ -6,7 +6,9 @@ Completed: identity-based instance note patches, scoped dry-run note-target/impa
 
 ## Stage 0: Headless domain foundation
 
-Native read-ahead follow-up completed: verified-WAV disk worker, bounded inline ring, generation-safe frame controls, allocation-free callback and optional CPAL/CLI adapter. Remaining runtime work includes desktop native-control integration, signal graph/live DSP compilation, recording and actual device/background/long-session qualification. See [native-streaming.md](native-streaming.md).
+Signal-compilation follow-up completed: the existing track source/filter/gain-pan paths now lower to a typed bounded graph whose validated edges determine the offline block schedule. General routing, PDC, incremental graph caching and live native graph execution remain open. See [signal-compilation.md](signal-compilation.md).
+
+Native read-ahead follow-up completed: verified-WAV disk worker, bounded inline ring, generation-safe frame controls, allocation-free callback and optional CPAL/CLI adapter. Remaining runtime work includes desktop native-control integration, live compiled-DSP execution, recording and actual device/background/long-session qualification. See [native-streaming.md](native-streaming.md).
 
 Browser-streaming follow-up completed: bounded PCM ranges and scheduling, revision-bound metadata, A/B preparation/transitions, explicit underrun behavior and bounded host verification leases. Remaining runtime work includes native read-ahead/streaming, signal graph/DSP compilation, background/browser/device qualification and longer-session policy. See [browser-streaming.md](browser-streaming.md).
 
