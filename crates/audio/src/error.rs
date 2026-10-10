@@ -12,6 +12,16 @@ pub enum AudioError {
     InvalidFrameCount,
     #[error("render exceeds the {limit_frames}-frame output limit")]
     RenderTooLarge { limit_frames: usize },
+    #[error("signal graph supports at most {limit} active tracks, received {actual}")]
+    TooManyActiveTracks { limit: usize, actual: usize },
+    #[error("signal graph {resource} limit is {limit}, received {actual}")]
+    SignalGraphLimitExceeded {
+        resource: &'static str,
+        limit: usize,
+        actual: usize,
+    },
+    #[error("invalid signal graph: {issue}")]
+    InvalidSignalGraph { issue: &'static str },
     #[error("audio buffer allocation failed: {0}")]
     Allocation(#[from] std::collections::TryReserveError),
     #[error("asset {asset_id} has invalid channel count {channels}")]

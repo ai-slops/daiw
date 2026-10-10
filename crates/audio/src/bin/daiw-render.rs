@@ -155,32 +155,73 @@ fn run() -> Result<(), AudioError> {
 
 fn main() {
     let first_mode = std::env::args().nth(1);
-    let new_file_mode = matches!(
-        first_mode.as_deref(),
-        Some("--decode-file" | "--render-file-backed" | "--render-to-file")
-    );
-    let render_to_file_mode = first_mode.as_deref() == Some("--render-to-file");
     if let Err(error) = run() {
         eprintln!("daiw-render: {error}");
-        let resource_error = matches!(
-            error,
-            AudioError::DecodedPacketTooLarge
-                | AudioError::PcmDurationTooLong
-                | AudioError::PcmPayloadTooLarge
-                | AudioError::TooManySources { .. }
-                | AudioError::SourceFilesTooLarge
-                | AudioError::RenderTooLarge { .. }
-        );
-        let infrastructure_error = matches!(
-            error,
-            AudioError::Io(_) | AudioError::InvalidSourceRoot | AudioError::InvalidRenderOutputPath
-        );
-        std::process::exit(if new_file_mode && resource_error {
-            2
-        } else if render_to_file_mode && infrastructure_error {
-            3
-        } else {
-            1
-        });
+        std::process::exit(failure_exit_code(first_mode.as_deref(), &error));
+    }
+}
+
+fn failure_exit_code(mode: Option<&str>, error: &AudioError) -> i32 {
+    let new_file_mode = matches!(
+        mode,
+        Some("--decode-file" | "--render-file-backed" | "--render-to-file")
+    );
+    let resource_error = matches!(
+        error,
+        AudioError::DecodedPacketTooLarge
+            | AudioError::PcmDurationTooLong
+            | AudioError::PcmPayloadTooLarge
+            | AudioError::TooManySources { .. }
+            | AudioError::SourceFilesTooLarge
+            | AudioError::RenderTooLarge { .. }
+            | AudioError::TooManyActiveTracks { .. }
+    );
+    let infrastructure_error = matches!(
+        error,
+        AudioError::Io(_)
+            | AudioError::InvalidSourceRoot
+            | AudioError::InvalidRenderOutputPath
+            | AudioError::InvalidSignalGraph { .. }
+            | AudioError::SignalGraphLimitExceeded { .. }
+    );
+    if mode == Some("--render-to-file") && infrastructure_error {
+        3
+    } else if new_file_mode && resource_error {
+        2
+    } else {
+        1
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::failure_exit_code;
+    use daiw_audio::AudioError;
+
+    #[test]
+    fn render_to_file_classifies_internal_graph_failures_as_infrastructure() {
+        // Given
+        let invalid = AudioError::InvalidSignalGraph { issue: "test" };
+        let limit = AudioError::SignalGraphLimitExceeded {
+            resource: "nodes",
+            limit: 1,
+            actual: 2,
+        };
+
+        // When / Then
+        assert_eq!(failure_exit_code(Some("--render-to-file"), &invalid), 3);
+        assert_eq!(failure_exit_code(Some("--render-to-file"), &limit), 3);
+    }
+
+    #[test]
+    fn render_to_file_keeps_active_track_limit_as_resource_failure() {
+        // Given
+        let error = AudioError::TooManyActiveTracks {
+            limit: 256,
+            actual: 257,
+        };
+
+        // When / Then
+        assert_eq!(failure_exit_code(Some("--render-to-file"), &error), 2);
     }
 }
