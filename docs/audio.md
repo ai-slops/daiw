@@ -27,6 +27,8 @@ Output is deterministic 48 kHz, stereo, signed 16-bit little-endian PCM. Synth, 
 
 The core now validates emitted note identity, pitch/velocity and timing after modifiers, repetition and crop, including a global ID check across instances. HTTP rendering obtains that validated snapshot before looking up a render cache. The standalone renderer additionally rejects duplicate IDs at its own input boundary; existing NaN/Infinity rejection remains in place. Ordinary fractional pitch such as `60.25` is covered by a finite, non-silent render regression.
 
+Before rendering blocks, the audio crate now compiles each active track into an explicit `TrackSource -> OnePoleLowPass -> GainPan -> Master` graph, validates the typed stereo topology, and derives the deterministic instruction schedule from its edges. This private fixed compiler replaces the older prepared-plan path without changing `Snapshot` or public render APIs. See [signal-compilation.md](signal-compilation.md) for limits, provenance, buffer and latency contracts and explicit routing exclusions.
+
 Input/data validation and DSP validation are separate. The renderer now rejects unrepresentable frequency/phase, non-finite gain conversion, non-finite rendered track samples and non-finite master samples. The public WAV encoder independently rejects NaN/Infinity before allocation and quantization. Invalid values are not silently replaced with zero, silence or full-scale PCM. Ordinary finite samples still clip to `[-1,1]` at PCM encoding, preserving prior quantization.
 
 ### Numeric and output-memory boundaries

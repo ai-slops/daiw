@@ -46,6 +46,14 @@ The primary client is React/TypeScript, served locally and usable in Chromium or
 
 Native output must be tested on actual Windows and Linux devices before claiming production latency and driver compatibility. CI compilation and deterministic offline audio tests cannot establish those properties. See `audio.md` and `verification.md` for what has actually been exercised.
 
+## ADR-0006: Compile fixed signal topology before execution
+
+**Status:** accepted for the current offline track-strip renderer.
+
+The immutable playback snapshot remains the process boundary and does not persist signal nodes. Inside `daiw-audio`, each active track lowers to typed source, one-pole filter and gain/pan nodes feeding one master. The graph is validated before a deterministic execution schedule is derived from its master ports and edges. The block kernel executes that schedule using one master and one reusable track buffer; it does not carry a separate hard-coded topology.
+
+This restricted graph makes current topology, zero latency, order, provenance and limits explicit while preserving exact output. It intentionally cannot represent buses, sends, sidechains, feedback, PDC, automation or plugins. Adding those concepts requires a versioned canonical contract, not an implicit reinterpretation of the current track fields. See [signal-compilation.md](signal-compilation.md).
+
 ## Trust boundaries
 
 - Same-origin GUI sessions carry a random per-process session token.
