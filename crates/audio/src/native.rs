@@ -7,6 +7,42 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 
 use crate::{AudioError, AudioSwap, AudioSwapControl, LoopRange, RenderedAudio, Transport};
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct NativeRenderFormat {
+    pub(crate) sample_rate: u32,
+    pub(crate) channels: u16,
+}
+
+pub(crate) fn select_output_config(
+    supported: impl IntoIterator<Item = cpal::SupportedStreamConfigRange>,
+    format: NativeRenderFormat,
+) -> Option<cpal::SupportedStreamConfig> {
+    supported.into_iter().find_map(|range| {
+        if range.sample_format() != cpal::SampleFormat::F32 || range.channels() != format.channels {
+            return None;
+        }
+        range.try_with_sample_rate(cpal::SampleRate(format.sample_rate))
+    })
+}
+
+pub(crate) fn default_output_device_and_config(
+    format: NativeRenderFormat,
+) -> Result<(cpal::Device, cpal::SupportedStreamConfig), AudioError> {
+    let device = cpal::default_host()
+        .default_output_device()
+        .ok_or(AudioError::NoOutputDevice)?;
+    let supported = device
+        .supported_output_configs()
+        .map_err(|error| AudioError::Native(error.to_string()))?;
+    let config = select_output_config(supported, format).ok_or_else(|| {
+        AudioError::Native(format!(
+            "no f32 output format supports {} Hz/{} channels",
+            format.sample_rate, format.channels
+        ))
+    })?;
+    Ok((device, config))
+}
+
 #[derive(Debug, Default)]
 struct StreamErrors(AtomicU64);
 
@@ -31,29 +67,11 @@ pub struct NativePlayer {
 
 impl NativePlayer {
     pub fn new(audio: RenderedAudio) -> Result<Self, AudioError> {
-        let host = cpal::default_host();
-        let device = host
-            .default_output_device()
-            .ok_or(AudioError::NoOutputDevice)?;
-        let supported = device
-            .default_output_config()
-            .map_err(|error| AudioError::Native(error.to_string()))?;
-        if supported.sample_format() != cpal::SampleFormat::F32 {
-            return Err(AudioError::Native(format!(
-                "default output format {:?} is unsupported; f32 required",
-                supported.sample_format()
-            )));
-        }
-        if supported.sample_rate().0 != audio.sample_rate || supported.channels() != audio.channels
-        {
-            return Err(AudioError::Native(format!(
-                "device format is {} Hz/{} channels, render is {} Hz/{} channels",
-                supported.sample_rate().0,
-                supported.channels(),
-                audio.sample_rate,
-                audio.channels
-            )));
-        }
+        let format = NativeRenderFormat {
+            sample_rate: audio.sample_rate,
+            channels: audio.channels,
+        };
+        let (device, supported) = default_output_device_and_config(format)?;
         let samples: Arc<[f32]> = audio.samples.into();
         let transport = Arc::new(Transport::new(samples.len()));
         let (swaps, mut callback) = AudioSwap::channel(Arc::clone(&transport), samples);
@@ -133,19 +151,5 @@ impl NativePlayer {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::StreamErrors;
-
-    #[test]
-    fn stream_errors_are_counted_without_formatting_or_logging() {
-        // Given
-        let errors = StreamErrors::default();
-
-        // When
-        errors.record();
-        errors.record();
-
-        // Then
-        assert_eq!(errors.count(), 2);
-    }
-}
+#[path = "native_tests.rs"]
+mod tests;
