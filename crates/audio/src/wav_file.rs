@@ -8,7 +8,8 @@ use sha2::{Digest, Sha256};
 use crate::pcm_format::lowercase_hex;
 use crate::render::OUTPUT_BLOCK_FRAMES;
 use crate::render_clock::RenderClock;
-use crate::render_kernel::{BlockSink, RenderContext, render_blocks};
+use crate::render_kernel::{BlockSink, render_blocks};
+use crate::signal_graph::compile;
 use crate::source::SourceBank;
 use crate::validate::validate_snapshot;
 use crate::wav::wav_header;
@@ -121,14 +122,8 @@ pub(crate) fn render_to_file(
 ) -> Result<WavFileDescriptor, AudioError> {
     validate_snapshot(snapshot, crate::DEFAULT_SAMPLE_RATE)?;
     let clock = RenderClock::new(snapshot, crate::DEFAULT_SAMPLE_RATE)?;
+    let program = compile(snapshot, sources, &clock)?;
     let mut sink = WavFileSink::create(output, clock.total_frames)?;
-    render_blocks::<OUTPUT_BLOCK_FRAMES>(
-        RenderContext {
-            snapshot,
-            clock: &clock,
-        },
-        sources,
-        &mut sink,
-    )?;
+    render_blocks::<OUTPUT_BLOCK_FRAMES>(&program, sources, &mut sink)?;
     sink.finish()
 }

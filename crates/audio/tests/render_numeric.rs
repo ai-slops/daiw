@@ -156,7 +156,18 @@ fn reused_track_buffer_preserves_independent_track_summation() {
 fn empty_render_does_not_evaluate_unused_derived_values() {
     let mut input = request();
     input.snapshot.length = 0.0;
-    input.snapshot.tracks[0].gain = f64::MAX;
+    let mut track = input.snapshot.tracks[0].clone();
+    track.gain = f64::MAX;
+    track.pan = f64::MAX;
+    track.cutoff = f64::MAX;
+    input.snapshot.tracks = (0..257)
+        .map(|ordinal| {
+            let mut active = track.clone();
+            active.id = format!("track-{ordinal}");
+            active
+        })
+        .collect();
+    input.snapshot.notes[0].track_id = "track-0".into();
     input.snapshot.notes[0].pitch = f64::MAX;
     assert!(must(render(&input)).samples.is_empty());
 }

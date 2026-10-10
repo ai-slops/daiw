@@ -1,10 +1,11 @@
 use std::f64::consts::TAU;
 
-use crate::render_clock::RenderClock;
-use crate::render_plan::{PreparedNote, PreparedRegion, prepare};
+use crate::signal_graph::{
+    BufferSlot, CompiledSignalProgram, Instruction, PreparedNote, PreparedRegion,
+};
 use crate::source::SourceBank;
 use crate::validate::finite_samples;
-use crate::{AudioError, Instrument, Snapshot};
+use crate::{AudioError, Instrument};
 
 pub(crate) trait BlockSink {
     fn write_block(&mut self, start_frame: usize, frames: &[[f32; 2]]) -> Result<(), AudioError>;
@@ -12,11 +13,6 @@ pub(crate) trait BlockSink {
 
 pub(crate) struct Collector {
     samples: Vec<f32>,
-}
-
-pub(crate) struct RenderContext<'a> {
-    pub snapshot: &'a Snapshot,
-    pub clock: &'a RenderClock,
 }
 
 struct BlockScratch<'a> {
@@ -28,6 +24,25 @@ struct SourceReader<'a, S> {
     output_rate: u32,
     sources: &'a mut S,
     frame: [f32; 8],
+}
+
+struct ExecutionState<const BLOCK_FRAMES: usize> {
+    master: [[f32; 2]; BLOCK_FRAMES],
+    track: [[f32; 2]; BLOCK_FRAMES],
+    filter_states: Vec<[f64; 2]>,
+}
+
+#[derive(Clone, Copy)]
+struct BlockSpan {
+    start: usize,
+    frames: usize,
+}
+
+struct ExecutionBlock<'execution, 'program, 'source, S, const BLOCK_FRAMES: usize> {
+    program: &'program CompiledSignalProgram<'program>,
+    state: &'execution mut ExecutionState<BLOCK_FRAMES>,
+    source_reader: &'execution mut SourceReader<'source, S>,
+    span: BlockSpan,
 }
 
 impl Collector {
@@ -53,58 +68,122 @@ impl BlockSink for Collector {
 }
 
 pub(crate) fn render_blocks<const BLOCK_FRAMES: usize>(
-    context: RenderContext<'_>,
+    program: &CompiledSignalProgram<'_>,
     sources: &mut impl SourceBank,
     sink: &mut impl BlockSink,
 ) -> Result<(), AudioError> {
     const { assert!(BLOCK_FRAMES > 0, "render block must contain frames") };
-    let mut plan = prepare(context.snapshot, sources, context.clock)?;
-    let mut master = [[0.0_f32; 2]; BLOCK_FRAMES];
-    let mut scratch = [[0.0_f32; 2]; BLOCK_FRAMES];
+    let mut state: ExecutionState<BLOCK_FRAMES> = ExecutionState::new(program)?;
     let mut source_reader = SourceReader {
-        output_rate: context.clock.sample_rate,
+        output_rate: program.provenance.sample_rate,
         sources,
         frame: [0.0; 8],
     };
     let mut block_start = 0;
-    while block_start < context.clock.total_frames {
-        let block_frames = BLOCK_FRAMES.min(context.clock.total_frames - block_start);
+    while block_start < program.provenance.total_frames {
+        let block_frames = BLOCK_FRAMES.min(program.provenance.total_frames - block_start);
         let block_end = block_start + block_frames;
-        master[..block_frames].fill([0.0; 2]);
-        for track in &mut plan.tracks {
-            scratch[..block_frames].fill([0.0; 2]);
-            let mut block = BlockScratch {
-                frames: &mut scratch[..block_frames],
+        ExecutionBlock {
+            program,
+            state: &mut state,
+            source_reader: &mut source_reader,
+            span: BlockSpan {
                 start: block_start,
-            };
-            for note in &plan.notes[track.note_range.clone()] {
-                accumulate_note(&mut block, note, context.clock.sample_rate);
-            }
-            for region in &plan.regions[track.region_range.clone()] {
-                source_reader.accumulate_region(&mut block, region)?;
-            }
-            for frame in &mut *block.frames {
-                for (channel, sample) in frame.iter_mut().enumerate() {
-                    track.filter_state[channel] += track.filter_coefficient
-                        * (f64::from(*sample) - track.filter_state[channel]);
-                    *sample = track.filter_state[channel] as f32;
-                }
-            }
-            let flat = scratch[..block_frames].as_flattened();
-            finite_samples(flat, &track.track.id)?;
-            for (target, source) in master[..block_frames]
-                .iter_mut()
-                .zip(&scratch[..block_frames])
-            {
-                target[0] += (f64::from(source[0]) * track.pan_gain[0]) as f32;
-                target[1] += (f64::from(source[1]) * track.pan_gain[1]) as f32;
-            }
+                frames: block_frames,
+            },
         }
-        finite_samples(master[..block_frames].as_flattened(), "master")?;
-        sink.write_block(block_start, &master[..block_frames])?;
+        .execute()?;
+        sink.write_block(block_start, &state.master[..block_frames])?;
         block_start = block_end;
     }
     Ok(())
+}
+
+impl<const BLOCK_FRAMES: usize> ExecutionState<BLOCK_FRAMES> {
+    fn new(program: &CompiledSignalProgram<'_>) -> Result<Self, AudioError> {
+        if program.latency_frames() != 0 {
+            return Err(AudioError::InvalidSignalGraph {
+                issue: "nonzero execution latency is unsupported",
+            });
+        }
+        if !matches!(
+            program.buffer_slots(),
+            [BufferSlot::Master, BufferSlot::Track]
+        ) {
+            return Err(AudioError::InvalidSignalGraph {
+                issue: "execution buffer plan is invalid",
+            });
+        }
+        let mut filter_states = Vec::new();
+        filter_states.try_reserve_exact(program.track_count())?;
+        filter_states.resize(program.track_count(), [0.0; 2]);
+        Ok(Self {
+            master: [[0.0; 2]; BLOCK_FRAMES],
+            track: [[0.0; 2]; BLOCK_FRAMES],
+            filter_states,
+        })
+    }
+}
+
+impl<S: SourceBank, const BLOCK_FRAMES: usize> ExecutionBlock<'_, '_, '_, S, BLOCK_FRAMES> {
+    fn execute(&mut self) -> Result<(), AudioError> {
+        for instruction in self.program.instructions() {
+            self.execute_instruction(*instruction)?;
+        }
+        Ok(())
+    }
+
+    fn execute_instruction(&mut self, instruction: Instruction) -> Result<(), AudioError> {
+        let block_frames = self.span.frames;
+        match instruction {
+            Instruction::ClearMaster => self.state.master[..block_frames].fill([0.0; 2]),
+            Instruction::ClearTrack { track: _ } => self.state.track[..block_frames].fill([0.0; 2]),
+            Instruction::RenderTrackSource { track } => {
+                let prepared = &self.program.tracks[track];
+                let mut block = BlockScratch {
+                    frames: &mut self.state.track[..block_frames],
+                    start: self.span.start,
+                };
+                for note in &self.program.notes[prepared.note_range.clone()] {
+                    accumulate_note(&mut block, note, self.program.provenance.sample_rate);
+                }
+                for region in &self.program.regions[prepared.region_range.clone()] {
+                    self.source_reader.accumulate_region(&mut block, region)?;
+                }
+            }
+            Instruction::LowPass { track } => {
+                let prepared = &self.program.tracks[track];
+                let filter_state = &mut self.state.filter_states[track];
+                for frame in &mut self.state.track[..block_frames] {
+                    for (channel, sample) in frame.iter_mut().enumerate() {
+                        filter_state[channel] += prepared.filter_coefficient
+                            * (f64::from(*sample) - filter_state[channel]);
+                        *sample = filter_state[channel] as f32;
+                    }
+                }
+            }
+            Instruction::ValidateTrack { track } => {
+                finite_samples(
+                    self.state.track[..block_frames].as_flattened(),
+                    &self.program.tracks[track].track.id,
+                )?;
+            }
+            Instruction::GainPanIntoMaster { track } => {
+                let pan_gain = self.program.tracks[track].pan_gain;
+                for (target, source) in self.state.master[..block_frames]
+                    .iter_mut()
+                    .zip(&self.state.track[..block_frames])
+                {
+                    target[0] += (f64::from(source[0]) * pan_gain[0]) as f32;
+                    target[1] += (f64::from(source[1]) * pan_gain[1]) as f32;
+                }
+            }
+            Instruction::ValidateMaster => {
+                finite_samples(self.state.master[..block_frames].as_flattened(), "master")?;
+            }
+        }
+        Ok(())
+    }
 }
 
 impl BlockScratch<'_> {

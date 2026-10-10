@@ -13,7 +13,6 @@ mod pcm_format;
 mod render;
 mod render_clock;
 mod render_kernel;
-mod render_plan;
 mod signal_graph;
 mod source;
 mod transport;

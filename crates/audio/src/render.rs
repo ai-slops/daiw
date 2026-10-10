@@ -1,5 +1,6 @@
 use crate::render_clock::RenderClock;
-use crate::render_kernel::{Collector, RenderContext, render_blocks};
+use crate::render_kernel::{Collector, render_blocks};
+use crate::signal_graph::compile;
 use crate::source::{ResidentSourceBank, SourceBank};
 use crate::validate::{validate_request, validate_snapshot};
 use crate::{AudioError, RenderRequest, RenderedAudio, Snapshot};
@@ -41,15 +42,9 @@ fn collect_from_sources<const BLOCK_FRAMES: usize>(
     sample_rate: u32,
 ) -> Result<RenderedAudio, AudioError> {
     let clock = RenderClock::new(snapshot, sample_rate)?;
+    let program = compile(snapshot, sources, &clock)?;
     let mut collector = Collector::new(clock.total_frames)?;
-    render_blocks::<BLOCK_FRAMES>(
-        RenderContext {
-            snapshot,
-            clock: &clock,
-        },
-        sources,
-        &mut collector,
-    )?;
+    render_blocks::<BLOCK_FRAMES>(&program, sources, &mut collector)?;
     Ok(RenderedAudio {
         sample_rate,
         channels: 2,

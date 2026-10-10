@@ -2,8 +2,9 @@ use std::collections::BTreeMap;
 
 use super::{render_with_sample_rate, render_with_sample_rate_and_block_size};
 use crate::render_clock::RenderClock;
-use crate::render_kernel::{Collector, RenderContext, render_blocks};
-use crate::source::{SourceBank, SourceMetadata};
+use crate::render_kernel::{Collector, render_blocks};
+use crate::signal_graph::compile;
+use crate::source::{ResidentSourceBank, SourceBank, SourceMetadata};
 use crate::{
     AudioError, AudioRegion, EffectiveNote, Instrument, Origin, PcmAsset, RenderRequest, Snapshot,
     Track,
@@ -157,19 +158,61 @@ fn overlapping_regions_read_each_source_range_contiguously_per_block() -> Result
     ];
     let clock = RenderClock::new(&snapshot, 48)?;
     let mut sources = RecordingSourceBank { reads: vec![] };
+    let program = compile(&snapshot, &sources, &clock)?;
     let mut collector = Collector::new(clock.total_frames)?;
 
     // When
-    render_blocks::<4>(
-        RenderContext {
-            snapshot: &snapshot,
-            clock: &clock,
-        },
-        &mut sources,
-        &mut collector,
-    )?;
+    render_blocks::<4>(&program, &mut sources, &mut collector)?;
 
     // Then
     assert_eq!(sources.reads, vec![0, 1, 2, 3, 8, 9, 10, 11]);
+    Ok(())
+}
+
+#[test]
+fn compiled_program_creates_fresh_execution_state_for_each_render() -> Result<(), AudioError> {
+    // Given
+    let request = boundary_request();
+    let clock = RenderClock::new(&request.snapshot, 48)?;
+    let metadata_sources = ResidentSourceBank::new(&request.assets);
+    let program = compile(&request.snapshot, &metadata_sources, &clock)?;
+    let mut first_sources = ResidentSourceBank::new(&request.assets);
+    let mut second_sources = ResidentSourceBank::new(&request.assets);
+    let mut first = Collector::new(clock.total_frames)?;
+    let mut second = Collector::new(clock.total_frames)?;
+
+    // When
+    render_blocks::<3>(&program, &mut first_sources, &mut first)?;
+    render_blocks::<3>(&program, &mut second_sources, &mut second)?;
+
+    // Then
+    assert_eq!(first.into_samples(), second.into_samples());
+    Ok(())
+}
+
+#[test]
+fn duplicate_track_ids_render_the_shared_events_once_per_ordinal() -> Result<(), AudioError> {
+    // Given
+    let mut single = boundary_request();
+    single.snapshot.length = 4.0 / 48.0;
+    single.snapshot.tracks.retain(|track| track.id == "pad");
+    single.snapshot.notes.retain(|note| note.id == "pad-a");
+    single.snapshot.regions.clear();
+    let mut duplicate = single.clone();
+    duplicate
+        .snapshot
+        .tracks
+        .push(single.snapshot.tracks[0].clone());
+
+    // When
+    let single_audio = render_with_sample_rate(&single, 48)?;
+    let duplicate_audio = render_with_sample_rate(&duplicate, 48)?;
+
+    // Then
+    for (single_sample, duplicate_sample) in
+        single_audio.samples.iter().zip(duplicate_audio.samples)
+    {
+        assert_eq!(duplicate_sample, single_sample + single_sample);
+    }
     Ok(())
 }
