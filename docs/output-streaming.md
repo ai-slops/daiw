@@ -6,7 +6,7 @@ The host renders directly to a verified WAV file and streams that file to HTTP c
 
 The shared renderer processes 4,096 output frames at a time with one stereo `f32` master block and one reusable stereo track block. Per-track two-channel `f64` filter state persists across blocks. Notes and regions are visited in their original order, clipped to each block's overlap, and use absolute note/region-relative offsets for oscillator phase, envelope and deterministic noise. Filtering, gain/pan, summation and PCM16 quantization retain their existing expressions.
 
-This avoids scanning every event for every output frame and avoids alternating distant same-asset source reads sample by sample. Event traversal is once per block plus actual overlapping event frames; it is not yet a fully indexed signal scheduler.
+This avoids scanning every event for every output frame and avoids alternating distant same-asset source reads sample by sample. Event traversal is once per block plus actual overlapping event frames. The fixed track topology is now compiled to a graph-derived instruction schedule; events remain ordered payload rather than individually indexed schedule nodes. See [signal-compilation.md](signal-compilation.md).
 
 The existing resident `render()`/`wav()` APIs and stdout CLI modes remain available. Resident rendering collects blocks for callers explicitly requesting a `RenderedAudio`; the host uses the file sink instead. A pre-refactor multi-track/noise/filter/boundary SHA-256 golden and fractional-source-offset PCM golden lock successful output compatibility. Block traversal can change which of several invalid inputs is diagnosed first, but invalid audio is never published as successful partial output.
 
@@ -57,4 +57,4 @@ A live HTTP fixture download was 13,165,760 bytes, delivered in 202 observed cli
 
 For six-track silent output fixtures, sampled Linux `/proc` high-water RSS was 5,408 KiB for four seconds and 5,372 KiB for 180 seconds. The latter produced a 34,560,044-byte WAV while stdout was only 178 bytes. These 10-ms samples demonstrate the tested output path, not a universal memory bound or performance certification. See [verification.md](verification.md) for hashes, counts and test scope.
 
-Bounded browser streaming playback is now implemented separately. Remaining work includes native streaming playback, real-time read-ahead, longer-duration policy qualification, signal graph/DSP compilation and physical-device testing. The three-minute output policy remains unchanged.
+Bounded browser and native streaming playback are implemented separately. The current fixed track-strip signal compiler does not yet provide live native execution or general routing. Longer-duration policy, general buses/sends/PDC and physical-device testing remain. The three-minute output policy is unchanged.
