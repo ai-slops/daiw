@@ -2,7 +2,16 @@
 
 This file records evidence, not aspirations. The supplied design remains the product target; the current repository must not be described as having passed every stage-1 acceptance condition.
 
-## Latest follow-up: native WAV read-ahead (2026-10-10)
+## Latest follow-up: bounded signal compilation (2026-10-10)
+
+- **330 Rust tests with all features**, **97 host/API tests**, and **98 client tests** passed. Workspace all-feature build, Clippy with warnings denied, formatting, no-excuse Rust review and TypeScript/Vite build passed. Changed Rust LSP diagnostics were clean. Existing upstream Zod annotation warnings remain non-blocking.
+- Coverage includes fixed typed source/filter/gain-pan/master topology, edge/cardinality/provenance validation, schedule derivation from reordered edge storage, explicit zero latency, two buffer slots, mute/solo, empty output, 256/257 active tracks, duplicate track IDs, fresh filter state and internal-versus-resource failure classification.
+- Independent review initially blocked commit because instructions were built beside rather than from the graph, latency was a test-only constant, zero-frame projects no longer preserved their previous early exit and internal graph errors could map to HTTP 422. The graph now validates before schedule lowering, latency is production metadata, zero frames compile master-only before track limits, and internal compiler failures use infrastructure exit 3. Re-review approved the fixes.
+- Existing block sizes 1, 3 and 4,096 remained bit-identical. The locked boundary/noise/filter WAV SHA-256, resident/file-backed equality, direct file sink, exact source-read sequence and numeric failure suites passed. The former `RenderPlan` was removed instead of retained as a parallel execution model.
+- A manual CLI driver produced the same non-silent **96,044-byte** WAV twice, SHA-256 `89f3b58d17a1e41dbc786a368210c98d85a797ba40f0b31d7efe472081188017`, and rejected an unknown track. A zero-frame snapshot with **257** unused tracks and extreme finite DSP values produced exactly the expected **44-byte** WAV.
+- No browser or UI behavior changed, so browser visual QA was not repeated. The graph is private and fixed: canonical routing entities, buses/sends/sidechains, feedback, PDC, automation/modulation, plugins, incremental graph caching, live native execution and physical-device qualification remain outstanding.
+
+## Native WAV read-ahead (2026-10-10)
 
 - **312 Rust tests with all features**, **97 host/API tests**, and **98 client tests** passed. Workspace all-feature build, Clippy with warnings denied, formatting and TypeScript/Vite build passed. Native CLI validation tests do not open devices. Existing upstream Zod annotation warnings remain non-blocking.
 - New coverage includes absolute-path/hash/header/frame validation, verified-handle pathname replacement, signed PCM conversion, 4096-frame crossings, variable callback sizes, pause/resume, stop, loop normalization, one-frame loops, EOF, bounded stale draining, allocation/deallocation instrumentation, runtime truncation faults and full-queue shutdown.
