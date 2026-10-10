@@ -91,6 +91,8 @@ pub enum AudioError {
     PcmPayloadHashMismatch,
     #[error("PCM whole-file SHA-256 does not match the source descriptor")]
     PcmFileHashMismatch,
+    #[error(transparent)]
+    WavStream(#[from] crate::WavStreamError),
     #[cfg(feature = "native")]
     #[error("no default audio output device is available")]
     NoOutputDevice,

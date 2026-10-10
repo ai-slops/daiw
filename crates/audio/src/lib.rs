@@ -7,6 +7,8 @@ mod loop_state;
 mod model;
 #[cfg(feature = "native")]
 mod native;
+#[cfg(feature = "native")]
+mod native_wav;
 mod pcm_format;
 mod render;
 mod render_clock;
@@ -33,6 +35,8 @@ pub use model::{
 };
 #[cfg(feature = "native")]
 pub use native::NativePlayer;
+#[cfg(feature = "native")]
+pub use native_wav::NativeWavPlayer;
 pub use pcm_format::{PCM_HEADER_LEN, PCM_PEAK_COUNT, PcmDescriptor, PcmHeader};
 pub use render::{DEFAULT_SAMPLE_RATE, render, render_with_sample_rate};
 pub use render_clock::MAX_RENDER_FRAMES;
