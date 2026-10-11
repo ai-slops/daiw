@@ -117,12 +117,14 @@ export const useBrowserAudio = (project: Project) => {
 				const engine = ensureEngine();
 				if (proposalId === undefined) await engine.prepare(project.id);
 				else await engine.prepareAB(project.id, proposalId);
+				return true;
 			} catch (reason) {
 				setError(
 					reason instanceof Error
 						? reason.message
 						: "Audio preparation failed.",
 				);
+				return false;
 			} finally {
 				setBusy(false);
 			}
@@ -134,7 +136,7 @@ export const useBrowserAudio = (project: Project) => {
 		const engine = ensureEngine();
 		try {
 			await engine.activate();
-			if (state.audition === null) await prepare();
+			if (state.audition === null && !(await prepare())) return;
 			if (state.status === "playing") engine.pause();
 			else await engine.play();
 		} catch (reason) {

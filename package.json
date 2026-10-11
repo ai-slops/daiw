@@ -12,6 +12,7 @@
     "start": "node app/server.mjs",
     "test": "vitest run src",
     "test:server": "node --test tests/*.test.mjs",
+    "test:playback-flow": "node tests/playback-major-flow.e2e.mjs",
     "core:build": "sh scripts/rust.sh build",
     "core:test": "sh scripts/rust.sh test",
     "native:build": "cargo build -p daiw-audio --bin daiw-play --features native",
