@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, ipcMain } = require("electron");
+const { app, BrowserWindow, Menu, ipcMain, shell } = require("electron");
 const { fork } = require("node:child_process");
 const { join } = require("node:path");
 const http = require("node:http");
@@ -6,6 +6,7 @@ const {
 	NativeServiceBridge,
 	registerNativeAudioHandlers,
 } = require("./native-ipc.cjs");
+const { registerAuthHandler } = require("./auth-ipc.cjs");
 
 let service;
 let nativeBridge;
@@ -53,6 +54,7 @@ app
 		});
 		nativeBridge = new NativeServiceBridge(service);
 		registerNativeAudioHandlers({ ipcMain, service: nativeBridge, origin });
+		registerAuthHandler({ ipcMain, shell, origin });
 		await ready();
 		const window = new BrowserWindow({
 			title: "DAIW Studio",

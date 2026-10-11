@@ -24,3 +24,10 @@ contextBridge.exposeInMainWorld(
 		},
 	}),
 );
+contextBridge.exposeInMainWorld(
+	"daiwOpenAI",
+	Object.freeze({
+		openAuthorizationUrl: (url) =>
+			invoke("daiw-auth:open-authorization", { url }),
+	}),
+);
