@@ -2,7 +2,16 @@
 
 This file records evidence, not aspirations. The supplied design remains the product target; the current repository must not be described as having passed every stage-1 acceptance condition.
 
-## Latest follow-up: bounded signal compilation (2026-10-10)
+## Latest follow-up: desktop native playback controls (2026-10-11)
+
+- **344 all-feature Rust**, **122 host/API** and **106 client tests** passed. Full all-feature workspace build/Clippy, Rust formatting and strict TypeScript/Vite build passed. Relevant LSP checks had no errors; pre-existing agent-client Zod deprecation hints and upstream Zod build annotations remain non-blocking.
+- Rust tests exercise bounded JSONL commands, actual file-worker/callback advance, EOF state, selected-device digest/duplicate-name policy, safe startup errors, and shutdown/fatal exit while stdin stays open. Node/Electron tests cover opaque tokens, trusted main-frame IPC, missing binary, revision drift, startup cancellation, slow-close preparation races, worker death/retry, token-preserving session release, IPC disconnects and pipe/protocol limits.
+- Independent lifecycle reviews found and corrected orphaned startup workers, reload/backend overlap, broken-pipe failure paths, expiring/ambiguous device selectors, misleading EOF/startup states, latest-owner races, missing terminal notifications, and stale asynchronous UI errors. Final bounded re-review approved the contract.
+- The lead's disposable integration driver used actual Rust-backed `ProjectService`, `MediaStore`, `NativeAudioController` and the real headless WAV callback. It advanced **256 frames**, paused, sought to **4,095**, looped `[5,8)`, stopped at frame zero and released. It then drove Chromium's real React transport via an explicitly test-only bridge backed by that controller, preparing Native twice across backend switches and observing **two releases** and **zero console errors/warnings**. Temporary service/data were closed and removed.
+- Browser QA separately forced same-tick commands, idle-worker fault/retry and stale prepare/command/release failures after newer success. Fresh lead captures of web Browser, Native playing and no-device states at **1280/768/375** passed two independent visual reviews. Controls are live DOM, responsive and token-styled; timeline overflow stays in its scroller.
+- Actual native device enumeration returned `{"devices":[],"v":1}`. The Electron binary/service started, but headed rendering was unavailable without an X display. Browser bridge fixtures and headless callbacks do not prove Electron IPC end-to-end execution, audible output, device latency/xruns, Windows operation or hotplug/background qualification. Native A/B/loudness matching/metering and live DSP remain unsupported rather than silently simulated.
+
+## Bounded signal compilation (2026-10-10)
 
 - **330 Rust tests with all features**, **97 host/API tests**, and **98 client tests** passed. Workspace all-feature build, Clippy with warnings denied, formatting, no-excuse Rust review and TypeScript/Vite build passed. Changed Rust LSP diagnostics were clean. Existing upstream Zod annotation warnings remain non-blocking.
 - Coverage includes fixed typed source/filter/gain-pan/master topology, edge/cardinality/provenance validation, schedule derivation from reordered edge storage, explicit zero latency, two buffer slots, mute/solo, empty output, 256/257 active tracks, duplicate track IDs, fresh filter state and internal-versus-resource failure classification.
