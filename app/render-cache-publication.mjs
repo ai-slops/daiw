@@ -58,7 +58,8 @@ export async function publishRender(context, request) {
 				await parent.close();
 			}
 		}
-		handle = await open(await realManaged(cacheRoot, path), "r");
+		const managedPath = await realManaged(cacheRoot, path);
+		handle = await open(managedPath, "r");
 		const analysis = await verifyWavFile(handle, descriptor);
 		database.exec("BEGIN IMMEDIATE");
 		try {
@@ -84,6 +85,7 @@ export async function publishRender(context, request) {
 		}
 		return {
 			handle,
+			managedPath,
 			descriptor,
 			analysis,
 			fileIdentity: fileIdentity(await handle.stat({ bigint: true })),

@@ -210,6 +210,10 @@ test("post-commit temp-path failure cannot replace a successful publication", as
 		1,
 	);
 	assert.equal((await built.handle.stat()).size, bytes.length);
+	assert.equal(
+		built.managedPath,
+		join(directory, "cache/render", `${key}.wav`),
+	);
 });
 
 test("metadata invalidation rolls back both rows and preserves the verification error", async (t) => {

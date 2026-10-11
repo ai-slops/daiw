@@ -1,17 +1,8 @@
-import {
-	mkdir,
-	open,
-	readdir,
-	realpath,
-	rm,
-} from "node:fs/promises";
+import { mkdir, open, readdir, realpath, rm } from "node:fs/promises";
 import { join, relative, resolve, sep } from "node:path";
 import { z } from "zod";
 import { ServiceError } from "./errors.mjs";
-import {
-	fileIdentity,
-	sameFileIdentity,
-} from "./render-cache-identity.mjs";
+import { fileIdentity, sameFileIdentity } from "./render-cache-identity.mjs";
 import { publishRender } from "./render-cache-publication.mjs";
 import {
 	InvalidWavCacheError,
@@ -154,9 +145,13 @@ export class RenderCache {
 			}
 			await this.#assertRoots();
 			handle = await open(await this.#realManaged(this.cacheRoot, path), "r");
+			const managedPath = await this.#realManaged(this.cacheRoot, path);
+			await handle.close();
+			handle = await open(managedPath, "r");
 			const analysis = await verifyWavFile(handle, descriptor);
 			return {
 				handle,
+				managedPath,
 				descriptor,
 				analysis,
 				fileIdentity: fileIdentity(await handle.stat({ bigint: true })),
