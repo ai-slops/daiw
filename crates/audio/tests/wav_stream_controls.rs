@@ -129,6 +129,11 @@ fn read_failure_is_typed_and_shutdown_joins_a_full_loop_queue() {
     reporter.record();
     reporter.clone().record();
     assert_eq!(control.stats().device_errors, 2);
+    assert_eq!(control.state(), WavStreamState::Faulted);
+    assert!(matches!(
+        control.take_error(),
+        Some(WavStreamError::DeviceError)
+    ));
     must(control.shutdown());
     assert_eq!(control.state(), WavStreamState::Shutdown);
     assert!(control.stop().is_err());

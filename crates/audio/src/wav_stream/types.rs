@@ -149,6 +149,8 @@ pub enum WavStreamError {
     StreamShutdown,
     #[error("WAV stream worker panicked")]
     WorkerPanicked,
+    #[error("native audio output device reported a runtime error")]
+    DeviceError,
     #[error("WAV stream numeric conversion failed: {0}")]
     IntegerConversion(#[from] std::num::TryFromIntError),
     #[error("WAV stream I/O failed: {0}")]

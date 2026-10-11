@@ -31,7 +31,7 @@ impl WavStreamCallback {
         match state {
             WavStreamState::Paused => {
                 output.fill(0.0);
-                self.discard_stale();
+                self.prepare_output();
             }
             WavStreamState::Playing => self.fill_playing(output, generation),
             WavStreamState::Ended | WavStreamState::Faulted | WavStreamState::Shutdown => {
@@ -116,7 +116,7 @@ impl WavStreamCallback {
         }
     }
 
-    fn discard_stale(&mut self) {
+    pub fn prepare_output(&mut self) -> bool {
         let (generation, _) = unpack(self.shared.cursor.load(Ordering::Acquire));
         let mut stale_budget = MAX_STALE_DISCARDS;
         while stale_budget > 0 {
@@ -125,7 +125,7 @@ impl WavStreamCallback {
                 .as_ref()
                 .is_some_and(|block| block.generation == generation)
             {
-                return;
+                return true;
             }
             if self.current.take().is_some() {
                 self.offset = 0;
@@ -141,11 +141,12 @@ impl WavStreamCallback {
                 Ok(block) => {
                     self.offset = 0;
                     self.current = Some(block);
-                    return;
+                    return true;
                 }
-                Err(_) => return,
+                Err(_) => return false,
             }
         }
+        false
     }
 }
 

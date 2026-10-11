@@ -13,6 +13,8 @@ pub struct DeviceErrorReporter {
 impl DeviceErrorReporter {
     pub fn record(&self) {
         self.shared.device_errors.fetch_add(1, Ordering::Relaxed);
+        let (generation, _) = self.shared.state_snapshot();
+        self.shared.fault(generation, WavStreamError::DeviceError);
     }
 }
 
