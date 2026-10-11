@@ -107,6 +107,12 @@ pub enum AudioError {
     #[error("no default audio output device is available")]
     NoOutputDevice,
     #[cfg(feature = "native")]
+    #[error("selected audio output device is unavailable")]
+    DeviceUnavailable,
+    #[cfg(feature = "native")]
+    #[error("control protocol failure was already reported")]
+    ControlProtocol,
+    #[cfg(feature = "native")]
     #[error("native audio backend failed: {0}")]
     Native(String),
 }

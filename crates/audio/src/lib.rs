@@ -8,6 +8,8 @@ mod model;
 #[cfg(feature = "native")]
 mod native;
 #[cfg(feature = "native")]
+mod native_device;
+#[cfg(feature = "native")]
 mod native_wav;
 mod pcm_format;
 mod render;
@@ -35,6 +37,8 @@ pub use model::{
 };
 #[cfg(feature = "native")]
 pub use native::NativePlayer;
+#[cfg(feature = "native")]
+pub use native_device::{NativeDeviceSelector, NativeOutputDevice, list_native_output_devices};
 #[cfg(feature = "native")]
 pub use native_wav::NativeWavPlayer;
 pub use pcm_format::{PCM_HEADER_LEN, PCM_PEAK_COUNT, PcmDescriptor, PcmHeader};
