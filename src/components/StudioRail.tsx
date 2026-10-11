@@ -52,7 +52,7 @@ export const StudioRail = ({
 				onClick={() => onWorkspace("assistant")}
 			>
 				<Bot aria-hidden="true" />
-				<span>Review</span>
+				<span>Assistant</span>
 			</button>
 			<button type="button" onClick={onAddTrack}>
 				<Plus aria-hidden="true" />
