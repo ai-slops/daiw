@@ -7,7 +7,16 @@ use daiw_audio::{
 pub enum Invocation {
     Help,
     Legacy(Option<String>),
+    ListOutputDevices,
     Stream(StreamArguments),
+    Control(ControlArguments),
+}
+
+pub struct ControlArguments {
+    pub path: PathBuf,
+    pub sha256: String,
+    pub device: Option<daiw_audio::NativeDeviceSelector>,
+    pub headless_callback_driver: bool,
 }
 
 pub struct StreamArguments {
@@ -45,6 +54,14 @@ pub fn parse(arguments: impl IntoIterator<Item = String>) -> Result<Invocation, 
             Ok(Invocation::Help)
         }
         "--stream-wav" => parse_stream(arguments).map(Invocation::Stream),
+        "--control-wav" => parse_control(arguments).map(Invocation::Control),
+        "--list-output-devices" => {
+            if arguments.next().as_deref() != Some("--json") {
+                return Err(invalid("--list-output-devices requires --json"));
+            }
+            reject_extra(arguments, "--json")?;
+            Ok(Invocation::ListOutputDevices)
+        }
         value if value.starts_with('-') && value != "-" => {
             Err(invalid(format!("unknown argument: {value}")))
         }
@@ -53,6 +70,70 @@ pub fn parse(arguments: impl IntoIterator<Item = String>) -> Result<Invocation, 
             Ok(Invocation::Legacy(Some(path.to_owned())))
         }
     }
+}
+
+fn parse_control(
+    mut arguments: impl Iterator<Item = String>,
+) -> Result<ControlArguments, AudioError> {
+    let path = PathBuf::from(take_value(&mut arguments, "--control-wav")?);
+    if path.as_os_str().len() > 4096 {
+        return Err(invalid("--control-wav path exceeds 4096 bytes"));
+    }
+    let mut sha256 = None;
+    let mut device_index = None;
+    let mut device_sha256 = None;
+    let mut headless_callback_driver = false;
+    while let Some(flag) = arguments.next() {
+        match flag.as_str() {
+            "--sha256" => {
+                reject_duplicate(&sha256, "--sha256")?;
+                let value = take_value(&mut arguments, "--sha256")?;
+                Sha256Digest::parse(&value)?;
+                sha256 = Some(value);
+            }
+            "--device-index" => {
+                reject_duplicate(&device_index, "--device-index")?;
+                let value = take_value(&mut arguments, "--device-index")?;
+                device_index = Some(value.parse::<usize>().map_err(|_| {
+                    invalid(format!("device index must be an unsigned integer: {value}"))
+                })?);
+            }
+            "--device-sha256" => {
+                reject_duplicate(&device_sha256, "--device-sha256")?;
+                let value = take_value(&mut arguments, "--device-sha256")?;
+                Sha256Digest::parse(&value)?;
+                device_sha256 = Some(value);
+            }
+            "--headless-callback-driver" if !headless_callback_driver => {
+                headless_callback_driver = true;
+            }
+            "--headless-callback-driver" => {
+                return Err(invalid("duplicate --headless-callback-driver"));
+            }
+            _ => return Err(invalid(format!("unknown argument: {flag}"))),
+        }
+    }
+    let sha256 = sha256.ok_or_else(|| invalid("missing required --sha256"))?;
+    let device = match (device_index, device_sha256) {
+        (Some(index), Some(digest)) => Some(daiw_audio::NativeDeviceSelector::new(index, &digest)?),
+        (None, None) => None,
+        (Some(_), None) | (None, Some(_)) => {
+            return Err(invalid(
+                "--device-index and --device-sha256 must be used together",
+            ));
+        }
+    };
+    if headless_callback_driver && device.is_some() {
+        return Err(invalid(
+            "--headless-callback-driver cannot select a physical device",
+        ));
+    }
+    Ok(ControlArguments {
+        path,
+        sha256,
+        device,
+        headless_callback_driver,
+    })
 }
 
 fn parse_stream(
