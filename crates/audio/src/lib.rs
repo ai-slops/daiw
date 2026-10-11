@@ -2,6 +2,7 @@ mod decode;
 mod decode_stream;
 mod dsp_executor;
 mod dsp_sources;
+mod dsp_swap;
 mod error;
 mod file_bank;
 mod file_validation;
@@ -32,6 +33,7 @@ pub use decode::{MAX_DECODED_SAMPLES, decode_file};
 pub use decode_stream::decode_to_pcm;
 pub use dsp_executor::{DspExecutor, DspProcessError, DspProcessReport, DspProcessState};
 pub use dsp_sources::ResidentDspSources;
+pub use dsp_swap::{DspPublicationError, DspSwap, DspSwapCallback, DspSwapControl};
 pub use error::AudioError;
 pub use file_bank::{
     FileRenderInput, FileSourceDescriptor, render_file_backed, render_file_backed_to_wav,
