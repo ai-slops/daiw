@@ -1,207 +1,75 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import type {
-	AudioEngineState,
-	AuditionSide,
-	MasterMeter,
-	Snapshot,
-} from "../audio";
-import { DaiwAudioEngine } from "../audio";
-import { fourBarRange } from "../components/transport-timing";
-import { SnapshotResultSchema } from "../domain/api";
+import { useCallback, useRef, useState } from "react";
+import {
+	type AudioBackend,
+	AudioBackendReleaseError,
+	AudioBackendSwitcher,
+	UnsupportedAudioCapabilityError,
+} from "../audio/backend-switch";
 import type { Project } from "../domain/project";
-import { rpc } from "../lib/api-client";
+import { useBrowserAudio } from "./use-browser-audio";
+import { useNativeAudio } from "./use-native-audio";
 
-const initialState: AudioEngineState = {
-	status: "stopped",
-	positionBeat: 0,
-	loop: null,
-	revision: null,
-	audition: null,
-	loudnessMatching: false,
-};
-const silentMeter: MasterMeter = {
-	peak: 0,
-	rms: 0,
-	peakDb: -Infinity,
-	rmsDb: -Infinity,
-};
+export type { AudioBackend } from "../audio/backend-switch";
 
 export const useAudio = (project: Project) => {
-	const engineRef = useRef<DaiwAudioEngine | null>(null);
-	const unsubscribeRef = useRef<(() => void) | null>(null);
-	const unsubscribeFaultRef = useRef<(() => void) | null>(null);
-	const snapshotRef = useRef<Snapshot | null>(null);
-	const [state, setState] = useState<AudioEngineState>(initialState);
-	const [meter, setMeter] = useState<MasterMeter>(silentMeter);
-	const [busy, setBusy] = useState(false);
-	const [snapshotRevision, setSnapshotRevision] = useState<string>();
-	const [error, setError] = useState<string>();
-
-	const ensureEngine = useCallback(() => {
-		const current = engineRef.current;
-		if (current !== null) return current;
-		const engine = new DaiwAudioEngine();
-		const snapshot = snapshotRef.current;
-		if (snapshot !== null) engine.setSnapshot(snapshot);
-		unsubscribeRef.current = engine.subscribe(setState);
-		unsubscribeFaultRef.current = engine.subscribeFault((fault) =>
-			setError(fault.message),
-		);
-		engineRef.current = engine;
-		return engine;
-	}, []);
-
-	useEffect(() => {
-		let active = true;
-		const requestedRevision = project.revision;
-		void rpc(
-			{ projectId: project.id, method: "project.snapshot" },
-			SnapshotResultSchema,
-		)
-			.then(({ result }) => {
-				if (!active || result.snapshot.revision !== requestedRevision) return;
-				snapshotRef.current = result.snapshot;
-				setSnapshotRevision(result.snapshot.revision);
-				engineRef.current?.setSnapshot(result.snapshot);
-			})
-			.catch((reason: unknown) => {
-				if (active)
-					setError(
-						reason instanceof Error
-							? reason.message
-							: "Could not prepare the audio snapshot.",
-					);
-			});
-		return () => {
-			active = false;
-		};
-	}, [project.id, project.revision]);
-
-	useEffect(() => {
-		const engine = engineRef.current;
-		if (state.status !== "playing") {
-			if (engine !== null) setMeter(engine.getMeter());
-			return;
-		}
-		let frame = 0;
-		const sample = () => {
-			const current = engineRef.current;
-			if (current !== null) {
-				const nextState = current.getState();
-				setState(nextState);
-				setMeter(current.getMeter());
-				if (nextState.status === "playing")
-					frame = window.requestAnimationFrame(sample);
-			}
-		};
-		frame = window.requestAnimationFrame(sample);
-		return () => window.cancelAnimationFrame(frame);
-	}, [state.status]);
-
-	useEffect(
-		() => () => {
-			unsubscribeRef.current?.();
-			unsubscribeFaultRef.current?.();
-			const engine = engineRef.current;
-			engineRef.current = null;
-			if (engine !== null) void engine.dispose();
-		},
-		[],
-	);
-
-	const prepare = useCallback(
-		async (proposalId?: string) => {
-			setBusy(true);
-			setError(undefined);
+	const [backend, setBackendState] = useState<AudioBackend>("browser");
+	const [transitioning, setTransitioning] = useState(false);
+	const switcher = useRef(new AudioBackendSwitcher("browser"));
+	const transition = useRef(0);
+	const browser = useBrowserAudio(project);
+	const native = useNativeAudio(project, backend === "native");
+	const active = backend === "browser" ? browser : native;
+	const setBackend = useCallback(
+		async (next: AudioBackend) => {
+			const operation = transition.current + 1;
+			transition.current = operation;
+			setTransitioning(true);
 			try {
-				const engine = ensureEngine();
-				if (proposalId === undefined) await engine.prepare(project.id);
-				else await engine.prepareAB(project.id, proposalId);
+				const activeBackend = await switcher.current.switch(next, {
+					stopBrowser: browser.stop,
+					releaseNative: async () => {
+						if (!(await native.release())) throw new AudioBackendReleaseError();
+					},
+				});
+				setBackendState(activeBackend);
 			} catch (reason) {
-				setError(
-					reason instanceof Error
-						? reason.message
-						: "Audio preparation failed.",
-				);
+				if (!(reason instanceof AudioBackendReleaseError)) throw reason;
 			} finally {
-				setBusy(false);
+				if (transition.current === operation) setTransitioning(false);
 			}
 		},
-		[ensureEngine, project.id],
+		[browser.stop, native.release],
 	);
-
-	const toggle = useCallback(async () => {
-		const engine = ensureEngine();
-		try {
-			await engine.activate();
-			if (state.audition === null) await prepare();
-			if (state.status === "playing") engine.pause();
-			else await engine.play();
-		} catch (reason) {
-			setError(reason instanceof Error ? reason.message : "Playback failed.");
-		}
-	}, [ensureEngine, prepare, state.audition, state.status]);
-
-	const selectAB = useCallback(
-		(side: AuditionSide) => {
-			try {
-				ensureEngine().selectAB(side);
-			} catch (reason) {
-				setError(
-					reason instanceof Error ? reason.message : "A/B selection failed.",
-				);
-			}
-		},
-		[ensureEngine],
-	);
-	const toggleLoop = useCallback(() => {
-		const snapshot = snapshotRef.current;
-		if (snapshot === null || snapshot.length <= 0) {
-			setError("Add material before enabling a loop.");
-			return;
-		}
-		const engine = ensureEngine();
-		if (state.loop !== null) {
-			engine.setLoop(null);
-			return;
-		}
-		engine.setLoop(
-			fourBarRange(
-				state.positionBeat,
-				snapshot.length,
-				project.meterMap ?? project.meter,
-			),
-		);
-	}, [
-		ensureEngine,
-		project.meter,
-		project.meterMap,
-		state.loop,
-		state.positionBeat,
-	]);
-	const seek = useCallback(
-		(beat: number) => {
-			try {
-				ensureEngine().seek(beat);
-			} catch (reason) {
-				setError(reason instanceof Error ? reason.message : "Seeking failed.");
-			}
-		},
-		[ensureEngine],
-	);
-
 	return {
-		state,
-		meter,
-		busy: busy || snapshotRevision !== project.revision,
-		error,
-		toggle,
-		prepareAB: (proposalId: string) => prepare(proposalId),
-		selectAB,
-		stop: () => engineRef.current?.stop(),
-		seek,
-		toggleLoop,
-		setLoudnessMatching: (enabled: boolean) =>
-			ensureEngine().setLoudnessMatching(enabled),
+		...active,
+		busy: active.busy || transitioning,
+		backend,
+		nativeAvailable: native.available,
+		devices: native.devices,
+		deviceToken: native.deviceToken,
+		deviceLoading: native.deviceLoading,
+		refreshDevices: native.refreshDevices,
+		setDeviceToken: native.setDeviceToken,
+		supportsAB: backend === "browser",
+		supportsMeter: backend === "browser",
+		setBackend,
+		prepareAB:
+			backend === "browser"
+				? browser.prepareAB
+				: async () => {
+						throw new UnsupportedAudioCapabilityError("ab");
+					},
+		selectAB:
+			backend === "browser"
+				? browser.selectAB
+				: () => {
+						throw new UnsupportedAudioCapabilityError("ab");
+					},
+		setLoudnessMatching:
+			backend === "browser"
+				? browser.setLoudnessMatching
+				: () => {
+						throw new UnsupportedAudioCapabilityError("loudnessMatching");
+					},
 	};
 };
