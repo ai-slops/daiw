@@ -35,7 +35,7 @@ fn snapshot(track_count: usize) -> Snapshot {
     }
 }
 
-fn compile_snapshot(snapshot: &Snapshot) -> Result<super::CompiledSignalProgram<'_>, AudioError> {
+fn compile_snapshot(snapshot: &Snapshot) -> Result<super::CompiledDspProgram, AudioError> {
     let clock = RenderClock::new(snapshot, 48_000)?;
     let assets = BTreeMap::new();
     let sources = ResidentSourceBank::new(&assets);

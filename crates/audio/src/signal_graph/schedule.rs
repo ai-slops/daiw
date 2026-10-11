@@ -1,7 +1,8 @@
 use crate::AudioError;
 
-use super::compile::{Instruction, MAX_INSTRUCTIONS};
+use super::compile::MAX_INSTRUCTIONS;
 use super::graph::{Edge, Node, NodeId, NodeKind, NodeProvenance, SignalGraph};
+use super::program::Instruction;
 
 struct TrackPath<'a> {
     source: &'a Node,

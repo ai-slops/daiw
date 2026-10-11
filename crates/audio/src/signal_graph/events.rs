@@ -1,12 +1,12 @@
 use std::ops::Range;
 
 use crate::render_clock::{RenderClock, checked_frame_index};
-use crate::source::SourceBank;
+use crate::source::SourceMetadataProvider;
 use crate::validate::{finite, positive};
 use crate::{AudioError, AudioRegion, EffectiveNote, Instrument, Track};
 
-pub(crate) struct PreparedTrack<'a> {
-    pub(crate) track: &'a Track,
+pub(crate) struct PreparedTrack {
+    pub(crate) diagnostic_id: String,
     pub(crate) note_range: Range<usize>,
     pub(crate) region_range: Range<usize>,
     pub(crate) filter_coefficient: f64,
@@ -18,17 +18,17 @@ pub(super) struct EventRanges {
     pub(super) regions: Range<usize>,
 }
 
-pub(crate) struct PreparedNote<'a> {
-    pub(crate) note: &'a EffectiveNote,
+pub(crate) struct PreparedNote {
     pub(crate) instrument: Instrument,
     pub(crate) start: usize,
     pub(crate) end: usize,
     pub(crate) frames: usize,
     pub(crate) frequency: f64,
+    pub(crate) velocity: f64,
 }
 
-pub(crate) struct PreparedRegion<'a> {
-    pub(crate) region: &'a AudioRegion,
+pub(crate) struct PreparedRegion {
+    pub(crate) source_index: usize,
     pub(crate) start: usize,
     pub(crate) end: usize,
     pub(crate) source_start: u64,
@@ -38,11 +38,11 @@ pub(crate) struct PreparedRegion<'a> {
     pub(crate) gain: f32,
 }
 
-pub(crate) fn prepare_note<'a>(
-    note: &'a EffectiveNote,
+pub(crate) fn prepare_note(
+    note: &EffectiveNote,
     instrument: Instrument,
     clock: &RenderClock,
-) -> Result<Option<PreparedNote<'a>>, AudioError> {
+) -> Result<Option<PreparedNote>, AudioError> {
     if instrument == Instrument::Sample {
         return Ok(None);
     }
@@ -66,20 +66,21 @@ pub(crate) fn prepare_note<'a>(
         Instrument::Kick | Instrument::Snare | Instrument::Hat | Instrument::Sample => 0.0,
     };
     Ok(Some(PreparedNote {
-        note,
         instrument,
         start,
         end: start + actual_frames,
         frames,
         frequency,
+        velocity: note.velocity,
     }))
 }
 
-pub(crate) fn prepare_region<'a>(
-    region: &'a AudioRegion,
-    sources: &impl SourceBank,
+pub(crate) fn prepare_region(
+    region: &AudioRegion,
+    source_index: usize,
+    sources: &impl SourceMetadataProvider,
     clock: &RenderClock,
-) -> Result<Option<PreparedRegion<'a>>, AudioError> {
+) -> Result<Option<PreparedRegion>, AudioError> {
     let start = clock.frame_at(region.start)?;
     if start >= clock.total_frames {
         return Ok(None);
@@ -98,7 +99,7 @@ pub(crate) fn prepare_region<'a>(
         return Ok(None);
     }
     Ok(Some(PreparedRegion {
-        region,
+        source_index,
         start,
         end: start + duration,
         source_start,
@@ -109,11 +110,11 @@ pub(crate) fn prepare_region<'a>(
     }))
 }
 
-pub(crate) fn prepare_track<'a>(
-    track: &'a Track,
+pub(crate) fn prepare_track(
+    track: &Track,
     events: EventRanges,
     clock: &RenderClock,
-) -> Result<PreparedTrack<'a>, AudioError> {
+) -> Result<PreparedTrack, AudioError> {
     let gain = 10.0_f64.powf(track.gain / 20.0);
     finite(&track.id, "linearGain", gain)?;
     let pan = track.pan.clamp(-1.0, 1.0);
@@ -124,7 +125,7 @@ pub(crate) fn prepare_track<'a>(
     let maximum = f64::from(clock.sample_rate) * 0.49;
     let bounded = track.cutoff.clamp(20.0_f64.min(maximum), maximum);
     Ok(PreparedTrack {
-        track,
+        diagnostic_id: track.id.clone(),
         note_range: events.notes,
         region_range: events.regions,
         filter_coefficient: 1.0
