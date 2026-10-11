@@ -1,43 +1,47 @@
 {
-  "name": "daiw",
-  "version": "0.1.0",
-  "private": true,
-  "type": "module",
-  "engines": {
-    "node": ">=24"
-  },
-  "scripts": {
-    "dev": "vite --host 0.0.0.0 --port 5173",
-    "build": "tsc --noEmit && vite build",
-    "start": "node app/server.mjs",
-    "test": "vitest run src",
-    "test:server": "node --test tests/*.test.mjs",
-    "test:playback-flow": "node tests/playback-major-flow.e2e.mjs",
-    "core:build": "sh scripts/rust.sh build",
-    "core:test": "sh scripts/rust.sh test",
-    "native:build": "cargo build -p daiw-audio --bin daiw-play --features native",
-    "desktop": "electron desktop/main.cjs"
-  },
-  "dependencies": {
-    "ky": "^1.14.0",
-    "lucide-react": "^0.577.0",
-    "react": "^19.2.0",
-    "react-dom": "^19.2.0",
-    "zod": "^4.3.6"
-  },
-  "devDependencies": {
-    "@biomejs/biome": "^2.4.0",
-    "@playwright/test": "^1.58.2",
-    "@types/node": "^24.10.0",
-    "@types/react": "^19.2.0",
-    "@types/react-dom": "^19.2.0",
-    "@vitejs/plugin-react": "^5.1.4",
-    "electron": "^44.4.3",
-    "react-doctor": "^0.0.29",
-    "react-grab": "^0.0.98",
-    "react-scan": "^0.4.3",
-    "typescript": "^5.9.3",
-    "vite": "^7.3.1",
-    "vitest": "^4.0.18"
-  }
+	"name": "daiw",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"engines": {
+		"node": ">=24"
+	},
+	"scripts": {
+		"dev": "vite --host 0.0.0.0 --port 5173",
+		"build": "tsc --noEmit && vite build",
+		"start": "node app/server.mjs",
+		"test": "vitest run src",
+		"test:server": "node --test tests/*.test.mjs",
+		"test:playback-flow": "node tests/playback-major-flow.e2e.mjs",
+		"test:chat-flow": "node tests/chat-flow.e2e.mjs",
+		"core:build": "sh scripts/rust.sh build",
+		"core:test": "sh scripts/rust.sh test",
+		"native:build": "cargo build -p daiw-audio --bin daiw-play --features native",
+		"desktop": "electron desktop/main.cjs"
+	},
+	"dependencies": {
+		"@assistant-ui/react": "^0.15.27",
+		"jose": "^6.2.12",
+		"ky": "^1.14.0",
+		"lucide-react": "^0.577.0",
+		"openai": "^7.32.0",
+		"react": "^19.2.0",
+		"react-dom": "^19.2.0",
+		"zod": "^4.3.6"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.4.0",
+		"@playwright/test": "^1.58.2",
+		"@types/node": "^24.10.0",
+		"@types/react": "^19.2.0",
+		"@types/react-dom": "^19.2.0",
+		"@vitejs/plugin-react": "^5.1.4",
+		"electron": "^44.4.3",
+		"react-doctor": "^0.0.29",
+		"react-grab": "^0.0.98",
+		"react-scan": "^0.4.3",
+		"typescript": "^5.9.3",
+		"vite": "^7.3.1",
+		"vitest": "^4.0.18"
+	}
 }
