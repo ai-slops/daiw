@@ -11,6 +11,9 @@ import {
 import { secondsAtBeat } from "../../shared/timing.mjs";
 import type { AudioEngineState } from "../audio";
 import type { Project } from "../domain/project";
+import type { AudioBackend } from "../hooks/use-audio";
+import type { NativeDevice } from "../native-audio/bridge";
+import { AudioBackendControls } from "./AudioBackendControls";
 import { IconButton } from "./primitives";
 import {
 	formatMusicalPosition,
@@ -29,6 +32,14 @@ type TransportProps = {
 	readonly onLoop: () => void;
 	readonly onRender: () => void;
 	readonly onTiming: () => void;
+	readonly backend: AudioBackend;
+	readonly nativeAvailable: boolean;
+	readonly devices: readonly NativeDevice[];
+	readonly deviceToken: string | undefined;
+	readonly deviceLoading: boolean;
+	readonly onBackend: (backend: AudioBackend) => void;
+	readonly onDevice: (token: string) => void;
+	readonly onRetryDevices: () => void;
 };
 
 export const Transport = ({
@@ -41,6 +52,14 @@ export const Transport = ({
 	onLoop,
 	onRender,
 	onTiming,
+	backend,
+	nativeAvailable,
+	devices,
+	deviceToken,
+	deviceLoading,
+	onBackend,
+	onDevice,
+	onRetryDevices,
 }: TransportProps) => {
 	const playing = audio.status === "playing";
 	const position = audio.positionBeat;
@@ -55,6 +74,7 @@ export const Transport = ({
 					label="Previous bar"
 					icon={Rewind}
 					onClick={() => onSeek(previousBar(position, meterTiming))}
+					disabled={busy}
 				/>
 				<IconButton
 					label={playing ? "Pause playback" : "Start playback"}
@@ -63,17 +83,24 @@ export const Transport = ({
 					onClick={onToggle}
 					disabled={busy}
 				/>
-				<IconButton label="Stop playback" icon={Square} onClick={onStop} />
+				<IconButton
+					label="Stop playback"
+					icon={Square}
+					onClick={onStop}
+					disabled={busy}
+				/>
 				<IconButton
 					label="Next bar"
 					icon={FastForward}
 					onClick={() => onSeek(nextBar(position, meterTiming))}
+					disabled={busy}
 				/>
 				<IconButton
 					label="Loop current four bars"
 					icon={Repeat2}
 					aria-pressed={audio.loop !== null}
 					onClick={onLoop}
+					disabled={busy}
 				/>
 				<IconButton
 					label="Download master WAV"
@@ -104,6 +131,17 @@ export const Transport = ({
 				<span className="status-dot" />
 				48 kHz
 			</div>
+			<AudioBackendControls
+				backend={backend}
+				nativeAvailable={nativeAvailable}
+				devices={devices}
+				deviceToken={deviceToken}
+				deviceLoading={deviceLoading}
+				disabled={busy}
+				onBackend={onBackend}
+				onDevice={onDevice}
+				onRetry={onRetryDevices}
+			/>
 		</section>
 	);
 };

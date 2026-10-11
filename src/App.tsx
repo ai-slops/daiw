@@ -135,6 +135,14 @@ const LoadedStudio = ({ studio, project }: LoadedStudioProps) => {
 					onLoop={audio.toggleLoop}
 					onRender={() => downloadMix(project.id)}
 					onTiming={() => setTimingOpen(true)}
+					backend={audio.backend}
+					nativeAvailable={audio.nativeAvailable}
+					devices={audio.devices}
+					deviceToken={audio.deviceToken}
+					deviceLoading={audio.deviceLoading}
+					onBackend={audio.setBackend}
+					onDevice={audio.setDeviceToken}
+					onRetryDevices={() => void audio.refreshDevices()}
 				/>
 				{workspace === "arrangement" ? (
 					<>
@@ -151,15 +159,20 @@ const LoadedStudio = ({ studio, project }: LoadedStudioProps) => {
 							}
 						/>
 						<PianoRoll
-							key={pianoRollSessionKey(selected, composition.sourceDefinition?.id)}
+							key={pianoRollSessionKey(
+								selected,
+								composition.sourceDefinition?.id,
+							)}
 							project={project}
 							instance={selected}
 							sourceDefinition={composition.sourceDefinition}
 							sourceParentName={composition.sourceParentName}
-							compositionNotes={composition.sourceDefinition?.id === selected?.definitionId ? composition.currentExplanation?.compositionNotes : undefined}
-							effectiveNotes={
-								composition.currentExplanation?.effectiveNotes
+							compositionNotes={
+								composition.sourceDefinition?.id === selected?.definitionId
+									? composition.currentExplanation?.compositionNotes
+									: undefined
 							}
+							effectiveNotes={composition.currentExplanation?.effectiveNotes}
 							onCommit={composition.editNotes}
 						/>
 					</>
@@ -168,6 +181,7 @@ const LoadedStudio = ({ studio, project }: LoadedStudioProps) => {
 					<Mixer
 						tracks={project.tracks}
 						meter={audio.meter}
+						meterAvailable={audio.supportsMeter}
 						onTrack={(trackId, patch) =>
 							void studio.command({ type: "setTrack", trackId, ...patch })
 						}
@@ -191,6 +205,7 @@ const LoadedStudio = ({ studio, project }: LoadedStudioProps) => {
 						onPrepareAB={(proposalId) => void audio.prepareAB(proposalId)}
 						onSelectAB={audio.selectAB}
 						onLoudnessMatch={audio.setLoudnessMatching}
+						supportsAB={audio.supportsAB}
 					/>
 				) : null}
 				{workspace === "browser" ? browserPanel : null}

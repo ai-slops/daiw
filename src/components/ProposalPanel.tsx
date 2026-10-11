@@ -16,6 +16,7 @@ type ProposalPanelProps = {
 	readonly onPrepareAB: (proposalId: string) => void;
 	readonly onSelectAB: (side: AuditionSide) => void;
 	readonly onLoudnessMatch: (enabled: boolean) => void;
+	readonly supportsAB: boolean;
 };
 
 export const ProposalPanel = ({
@@ -29,6 +30,7 @@ export const ProposalPanel = ({
 	onPrepareAB,
 	onSelectAB,
 	onLoudnessMatch,
+	supportsAB,
 }: ProposalPanelProps) => {
 	const available = proposals.filter(
 		(item) => item.instanceId === instance?.id,
@@ -123,12 +125,18 @@ export const ProposalPanel = ({
 					</header>
 					<p>{proposal.request}</p>
 					<div className="ab-compare">
+						{supportsAB ? null : (
+							<p className="ab-compare__unavailable" role="status">
+								A/B audition and loudness matching are unavailable with Native
+								output. Switch Output to Browser to compare this proposal.
+							</p>
+						)}
 						<div>
 							<span>A · Current</span>
 							<Button
 								variant={audio.audition === "a" ? "primary" : "subtle"}
 								onClick={() => onSelectAB("a")}
-								disabled={audio.audition === null}
+								disabled={!supportsAB || audio.audition === null}
 							>
 								Listen A
 							</Button>
@@ -139,7 +147,7 @@ export const ProposalPanel = ({
 							<Button
 								variant={audio.audition === "b" ? "primary" : "subtle"}
 								onClick={() => onSelectAB("b")}
-								disabled={audio.audition === null}
+								disabled={!supportsAB || audio.audition === null}
 							>
 								Listen B
 							</Button>
@@ -147,7 +155,7 @@ export const ProposalPanel = ({
 						<Button
 							variant="ghost"
 							onClick={() => onPrepareAB(proposal.id)}
-							disabled={busy}
+							disabled={busy || !supportsAB}
 						>
 							Prepare A/B
 						</Button>
@@ -155,6 +163,7 @@ export const ProposalPanel = ({
 							<input
 								type="checkbox"
 								checked={audio.loudnessMatching}
+								disabled={!supportsAB}
 								onChange={(event) => onLoudnessMatch(event.target.checked)}
 							/>
 							Loudness match
