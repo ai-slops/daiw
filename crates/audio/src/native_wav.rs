@@ -1,6 +1,7 @@
 use cpal::traits::{DeviceTrait, StreamTrait};
 
 use crate::native::{NativeRenderFormat, default_output_device_and_config};
+use crate::native_device::{NativeDeviceSelector, selected_output_device_and_config};
 use crate::{
     AudioError, FrameLoopRange, FramePosition, WavStreamControl, WavStreamError, WavStreamFile,
     WavStreamOptions, WavStreamState, WavStreamStats,
@@ -27,6 +28,24 @@ impl NativeWavPlayer {
     /// exact f32 stereo 48 kHz output.
     pub fn new(file: WavStreamFile, options: WavStreamOptions) -> Result<Self, AudioError> {
         let (device, supported) = default_output_device_and_config(WAV_STREAM_FORMAT)?;
+        Self::build(file, options, device, supported)
+    }
+
+    pub fn new_with_device(
+        file: WavStreamFile,
+        options: WavStreamOptions,
+        selector: &NativeDeviceSelector,
+    ) -> Result<Self, AudioError> {
+        let (device, supported) = selected_output_device_and_config(selector, WAV_STREAM_FORMAT)?;
+        Self::build(file, options, device, supported)
+    }
+
+    fn build(
+        file: WavStreamFile,
+        options: WavStreamOptions,
+        device: cpal::Device,
+        supported: cpal::SupportedStreamConfig,
+    ) -> Result<Self, AudioError> {
         let (control, mut callback) = file.open(options)?;
         let device_errors = control.device_error_reporter();
         let stream = device
