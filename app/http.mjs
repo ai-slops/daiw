@@ -4,6 +4,7 @@ import { ServiceError } from "./errors.mjs";
 import { createRenderRoute } from "./render-http.mjs";
 import { rpcSchema } from "./service.mjs";
 import { serveStatic } from "./static-http.mjs";
+import { createChatRoute } from "./chat/http.mjs";
 
 const safeEqual = (a, b) =>
 	typeof a === "string" &&
@@ -44,6 +45,7 @@ export function createHandler({
 	staticRoot,
 	agentToken,
 	allowedHosts = new Set(),
+	chat,
 }) {
 	const session = randomBytes(32).toString("hex");
 	const send = (response, status, value) => {
@@ -54,6 +56,7 @@ export function createHandler({
 		response.end(JSON.stringify(value));
 	};
 	const serveRender = createRenderRoute({ service, media, send });
+	const serveChat = chat ? createChatRoute(chat) : undefined;
 	return async (request, response) => {
 		response.setHeader("X-Content-Type-Options", "nosniff");
 		response.setHeader("Referrer-Policy", "same-origin");
@@ -89,6 +92,17 @@ export function createHandler({
 				const host = trustedProxy
 					? (request.headers["x-forwarded-host"] ?? request.headers.host)
 					: request.headers.host;
+				const protocol = trustedProxy
+					? (request.headers["x-forwarded-proto"] ?? "http")
+					: request.socket.encrypted
+						? "https"
+						: "http";
+				if (protocol !== "http" && protocol !== "https")
+					throw new ServiceError(
+						"PermissionDenied",
+						"Forwarded protocol is not trusted.",
+						403,
+					);
 				if (
 					!localHosts.has(host) ||
 					(origin &&
@@ -102,6 +116,8 @@ export function createHandler({
 						"Origin does not match this application.",
 						403,
 					);
+				if (serveChat && url.pathname.startsWith("/api/chat/"))
+					return await serveChat({ request, response, url, authority: host, expectedOrigin: `${protocol}://${host}`, isHttps: protocol === "https" });
 				if (request.method === "GET" && url.pathname === "/api/session")
 					return send(response, 200, { token: session });
 				if (request.method === "GET" && url.pathname === "/api/health")
