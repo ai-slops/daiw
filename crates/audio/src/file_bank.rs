@@ -5,7 +5,7 @@ use std::path::Path;
 
 use crate::file_validation::{validate_digest, validate_file, validate_source_set};
 use crate::pcm_format::PCM_HEADER_LEN;
-use crate::source::{SourceBank, SourceMetadata};
+use crate::source::{SourceBank, SourceMetadata, SourceMetadataProvider};
 use crate::{AudioError, Snapshot};
 use serde::Deserialize;
 
@@ -108,7 +108,7 @@ pub fn render_file_backed_to_wav(
     crate::wav_file::render_to_file(&input.snapshot, &mut bank, output)
 }
 
-impl SourceBank for FileSourceBank {
+impl SourceMetadataProvider for FileSourceBank {
     fn metadata(&self, asset_id: &str) -> Result<SourceMetadata, AudioError> {
         self.sources
             .get(asset_id)
@@ -117,7 +117,9 @@ impl SourceBank for FileSourceBank {
                 asset_id: asset_id.to_owned(),
             })
     }
+}
 
+impl SourceBank for FileSourceBank {
     fn read_frame(
         &mut self,
         asset_id: &str,

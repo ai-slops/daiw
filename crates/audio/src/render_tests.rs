@@ -4,7 +4,7 @@ use super::{render_with_sample_rate, render_with_sample_rate_and_block_size};
 use crate::render_clock::RenderClock;
 use crate::render_kernel::{Collector, render_blocks};
 use crate::signal_graph::compile;
-use crate::source::{ResidentSourceBank, SourceBank, SourceMetadata};
+use crate::source::{ResidentSourceBank, SourceBank, SourceMetadata, SourceMetadataProvider};
 use crate::{
     AudioError, AudioRegion, EffectiveNote, Instrument, Origin, PcmAsset, RenderRequest, Snapshot,
     Track,
@@ -14,7 +14,7 @@ struct RecordingSourceBank {
     reads: Vec<u64>,
 }
 
-impl SourceBank for RecordingSourceBank {
+impl SourceMetadataProvider for RecordingSourceBank {
     fn metadata(&self, _asset_id: &str) -> Result<SourceMetadata, AudioError> {
         Ok(SourceMetadata {
             sample_rate: 48,
@@ -22,7 +22,9 @@ impl SourceBank for RecordingSourceBank {
             frames: 64,
         })
     }
+}
 
+impl SourceBank for RecordingSourceBank {
     fn read_frame(
         &mut self,
         _asset_id: &str,

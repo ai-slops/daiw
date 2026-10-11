@@ -9,9 +9,12 @@ pub struct SourceMetadata {
     pub frames: u64,
 }
 
-pub trait SourceBank {
+/// Supplies immutable source descriptions during DSP program compilation.
+pub trait SourceMetadataProvider {
     fn metadata(&self, asset_id: &str) -> Result<SourceMetadata, AudioError>;
+}
 
+pub trait SourceBank: SourceMetadataProvider {
     fn read_frame(
         &mut self,
         asset_id: &str,
@@ -31,7 +34,7 @@ impl<'a> ResidentSourceBank<'a> {
     }
 }
 
-impl SourceBank for ResidentSourceBank<'_> {
+impl SourceMetadataProvider for ResidentSourceBank<'_> {
     fn metadata(&self, asset_id: &str) -> Result<SourceMetadata, AudioError> {
         let asset = self
             .assets
@@ -39,6 +42,12 @@ impl SourceBank for ResidentSourceBank<'_> {
             .ok_or_else(|| AudioError::MissingAsset {
                 asset_id: asset_id.to_owned(),
             })?;
+        if asset.channels == 0 {
+            return Err(AudioError::InvalidAssetChannels {
+                asset_id: asset_id.to_owned(),
+                channels: asset.channels,
+            });
+        }
         let frames = u64::try_from(asset.samples.len() / usize::from(asset.channels))?;
         Ok(SourceMetadata {
             sample_rate: asset.sample_rate,
@@ -46,7 +55,9 @@ impl SourceBank for ResidentSourceBank<'_> {
             frames,
         })
     }
+}
 
+impl SourceBank for ResidentSourceBank<'_> {
     fn read_frame(
         &mut self,
         asset_id: &str,
