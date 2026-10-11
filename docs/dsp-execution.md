@@ -1,6 +1,6 @@
 # Prepared DSP execution boundary
 
-`daiw-audio` exposes an owned compiled program and a persistent variable-block executor. This is a library execution boundary, not device playback, program hot swap, a live file-source service or incremental compilation. Native/Electron physical qualification is explicitly deferred until an appropriate environment is available.
+`daiw-audio` exposes an owned compiled program, a persistent variable-block executor and bounded callback-boundary publication with deferred retirement. This is a library execution boundary, not device playback, a live file-source service or incremental compilation. Native/Electron physical qualification is explicitly deferred until an appropriate environment is available.
 
 ## Control-time preparation and process-time execution
 
@@ -46,10 +46,31 @@ The private offline compiler does not impose the new callback-oriented event cap
 
 For Rust source-provider implementors, metadata now belongs to `SourceMetadataProvider`; `SourceBank` extends that trait with frame reads. Existing custom banks must move their `metadata` implementation into a separate `impl SourceMetadataProvider`, retaining `read_frame` in `impl SourceBank`. CLI, snapshot and render wire formats are unchanged.
 
+## Bounded publication and retirement
+
+`DspSwap::channel(initial_executor)` returns `DspSwapControl` and `DspSwapCallback`. Construction resets the initial executor and allocates two capacity-one SPSC `rtrb` queues off callback. The channel fixes its sample rate from the initial program. Each endpoint has a single owner; borrowed resident PCM can span `thread::scope` while remaining immutable.
+
+The control side exposes:
+
+- `enqueue(prepared_executor)`: checks sample rate and observed callback abandonment, resets the candidate off callback, then publishes it to the pending slot. Success means **queued**, not activated or guaranteed receiver liveness; concurrent endpoint destruction can race with the abandonment check.
+- `compile_and_enqueue(&snapshot, resident_sources)`: compiles and prepares at the channel sample rate, then enqueues. Both build stages map to `DspPublicationError::Build(AudioError)`; publication can instead return `SampleRateMismatch { expected, actual }`, `QueueFull` or observed `Disconnected`. Build failures take precedence over transient full/disconnect errors because there is no capacity preflight. Every failure preserves the active and existing pending executors; a rejected candidate is dropped by the control API caller.
+- `reclaim()`: explicitly drops available retired executors on its caller thread and returns their count. It is not automatically invoked by enqueue.
+- `shutdown(matching_callback)`: after the host has stopped processing and returned the callback endpoint, drops both endpoints on its caller thread. The matching-half requirement is not checked dynamically.
+
+At the beginning of `DspSwapCallback::process`, the callback retries one deferred retirement. Only when that slot is empty can it take one pending executor. It replaces the whole current executor, moves the previous executor to the retired queue or back to the deferred slot on saturation, then processes the entire caller buffer once with the current executor. Even a buffer longer than 4,096 cannot change programs between its internal chunks. An empty buffer is still a publication boundary.
+
+Ownership is bounded to **four channel-held executors**: one active, one pending, one retired and one deferred. A caller-owned candidate or transient build is additional. If retirement remains blocked, subsequent replacements wait in the pending slot while the current program keeps running; another submission gets `QueueFull`. Callback processing never destroys an executor, including failed retirement pushes, and performs no allocation, locks, file I/O or formatting. Control must reclaim regularly for publication to keep advancing.
+
+Callback `program`, `cursor` and `state` describe the active executor. `reset()` affects only the currently active executor, not queued or retired programs. Every newly activated program starts at frame zero with fresh filter/fault state. A successfully activated program that later faults remains current with the executor's sticky-fault behavior: there is no runtime-fault rollback. Reset or a later valid replacement can recover it. There is no seek continuity, crossfade, click-free transition or acknowledgment/status service on the control endpoint.
+
+**Ordinary endpoint destruction is not real-time safe.** If control is dropped first, an already queued candidate may still activate; old owners remain bounded in the orphaned retired/deferred slots. If callback is dropped first, queued owners remain in channel storage until the final endpoint is dropped. Neither case leaks ownership, but destruction may deallocate on the dropping thread. The host must quiesce processing and move callback ownership off the audio thread before teardown. The borrowed PCM lifetime is unchanged; a future `'static` device adapter needs its own owned-source contract.
+
 ## Evidence and next boundaries
 
-Final gates passed **356 all-feature Rust tests**, **122 host tests**, **106 client tests**, workspace all-feature build/Clippy, formatting and TypeScript/Vite build. Allocator instrumentation checks success, EOF, first late fault, repeated fault and reset replay with zero allocations and deallocations. Existing file-source parity, duplicate-track, read-order and pre-refactor WAV golden tests pass.
+Final publication gates passed **363 all-feature Rust tests**, **122 host tests**, **106 client tests**, workspace all-feature build/Clippy, formatting and TypeScript/Vite build. Allocator instrumentation checks success, EOF, faults, reset, replacement, deferred retirement and retry with zero allocations and deallocations. Existing file-source parity, duplicate-track, read-order and pre-refactor WAV golden tests pass.
 
 An independent external crate imported the public API, compiled from a temporary snapshot, processed **7,001 frames** with request sizes **1, 3, 4,097 and 5,000**, and compared the result bit-for-bit with offline rendering of synthesis plus a resampled 32-kHz stereo source. EOF tail and reset replay matched. A second fixture faulted at frame 4,096 of a 4,097-frame call, zeroed the complete output, retained cursor 4,096 and returned the same error on repeat and reset replay.
 
-Still required: callback-boundary publication/retirement and last-valid-program ownership, disk-source prefetch, time-indexed active events for larger sessions, incremental compilation, transport seek/loop state policy and integration with a device callback. General routing, automation, PDC and plugins remain outside the fixed graph. No UI/device behavior was changed and no physical/native qualification is claimed.
+An additional independent public-API crate preserved existing PCM/cursor after a failed build, observed queued-versus-active revision differences and full-queue rejection, and matched replacement PCM bit-for-bit across a **4,097-frame** invocation. Retirement saturation delayed the next replacement until explicit reclaim. Per-call instrumentation measured zero callback allocations/deallocations; reclamation and final shutdown measured positive deallocations on the control caller. A scoped callback thread returned its borrowed endpoint to control before teardown. Independent final ownership review found no blocking issue.
+
+Still required: disk-source prefetch, time-indexed active events for larger sessions, incremental compilation, transport seek/loop state policy and integration with a device callback. General routing, automation, PDC and plugins remain outside the fixed graph. No UI/device behavior was changed and no physical/native qualification is claimed.
