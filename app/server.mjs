@@ -14,6 +14,7 @@ const [{ ProjectService }, { MediaStore }, { createHandler }] =
 	]);
 const { NativeAudioController } = await import("./native-audio-controller.mjs");
 const { attachNativeAudioIpc } = await import("./native-audio-ipc.mjs");
+const { ChatService, defaultChatDirectory } = await import("./chat/service.mjs");
 const configuredNativeBinary = process.env.DAIW_PLAY_BINARY;
 if (configuredNativeBinary !== undefined && !isAbsolute(configuredNativeBinary))
 	throw new TypeError("DAIW_PLAY_BINARY must be an absolute path");
@@ -24,6 +25,10 @@ const service = new ProjectService({
 	binary:
 		process.env.DAIW_CORE_BINARY ??
 		resolve(root, `target/debug/daiw-core${suffix}`),
+});
+const chat = new ChatService({
+	dataDirectory: defaultChatDirectory(),
+	projectService: service,
 });
 const media = new MediaStore({
 	directory,
@@ -63,6 +68,7 @@ const server = createServer(
 		staticRoot: resolve(root, "dist"),
 		agentToken: process.env.DAIW_AGENT_TOKEN,
 		allowedHosts,
+		chat,
 	}),
 );
 server.requestTimeout = 150000;
@@ -120,7 +126,7 @@ const close = () => {
 	if (closing) return;
 	closing = true;
 	server.close(() => {
-		Promise.all([nativeAudio?.close(), service.close()]).then(
+			Promise.all([nativeAudio?.close(), chat.close(), service.close()]).then(
 			() => process.exit(0),
 			() => process.exit(1),
 		);
