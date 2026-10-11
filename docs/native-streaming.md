@@ -2,7 +2,7 @@
 
 `daiw-audio` now provides a CPAL-independent verified-WAV streaming library and an optional `NativeWavPlayer` adapter. A dedicated disk worker fills a fixed-capacity ring; the device callback only consumes prepared samples and updates atomics. Existing resident `NativePlayer`, `Transport`, replacement-buffer APIs and snapshot CLI modes remain available.
 
-This plays an already rendered canonical WAV. It does not perform live synthesis, graph recompilation, recording or project editing in the callback. The Electron application still uses browser audio; native device selection/control is not wired into its UI.
+This plays an already rendered canonical WAV. It does not perform live synthesis, graph recompilation, recording or project editing in the callback. The Electron application now offers explicit native device selection/control alongside default Browser output; see [native-desktop-control.md](native-desktop-control.md). Native A/B and metering remain unsupported.
 
 ## File boundary and units
 
@@ -68,4 +68,4 @@ Headless tests cover exact file/digest/header bounds, same-handle pathname repla
 
 An independent real-file driver consumed a partial block, paused, sought across frame 4,095, looped over `[5,8)`, and shut down twice. It exposed a stale partial-block offset bug that unit coverage initially missed; the corrected path emits frame 4,095 rather than 4,103, and pause without seek still resumes at frame 8. CLI help, valid validation-only output and wrong-checksum rejection were also exercised.
 
-Physical WASAPI/ALSA/PipeWire devices, audible output, driver latency, xrun rates and Windows execution were not available for validation. Native-feature compilation and pure configuration tests do not certify those behaviors. Desktop native-control integration, live graph/DSP execution, recording, longer-session policy and broad device qualification remain open.
+Physical WASAPI/ALSA/PipeWire devices, audible output, driver latency, xrun rates and Windows execution were not available for validation. Native-feature compilation and pure configuration tests do not certify those behaviors. Desktop native controls are implemented with headless-worker and browser-bridge verification; actual Electron/device qualification, live graph/DSP execution, recording and longer-session policy remain open.
