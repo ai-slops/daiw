@@ -93,7 +93,7 @@ export type Track = Readonly<z.infer<typeof trackSchema>>;
 export type EffectiveNote = Readonly<z.infer<typeof effectiveNoteSchema>>;
 export type LoopRange = Readonly<{ start: number; end: number }>;
 export type AuditionSide = "a" | "b";
-export type TransportStatus = "stopped" | "playing" | "paused";
+export type TransportStatus = "stopped" | "playing" | "paused" | "faulted";
 
 export type AudioEngineState = Readonly<{
 	status: TransportStatus;
