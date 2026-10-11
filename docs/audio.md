@@ -29,6 +29,8 @@ The core now validates emitted note identity, pitch/velocity and timing after mo
 
 Before rendering blocks, the audio crate now compiles each active track into an explicit `TrackSource -> OnePoleLowPass -> GainPan -> Master` graph, validates the typed stereo topology, and derives the deterministic instruction schedule from its edges. This private fixed compiler replaces the older prepared-plan path without changing `Snapshot` or public render APIs. See [signal-compilation.md](signal-compilation.md) for limits, provenance, buffer and latency contracts and explicit routing exclusions.
 
+The owned `CompiledDspProgram` and resident-only `DspExecutor` now expose this kernel through a prepared variable-block library API. Compilation/preparation allocate off the callback; `process` and `reset` are allocation-free, with explicit EOF and sticky fault semantics. File-backed sources remain offline-only. See [dsp-execution.md](dsp-execution.md) for the source-provider trait split and exact public limits; this is not device integration or hot swap.
+
 Input/data validation and DSP validation are separate. The renderer now rejects unrepresentable frequency/phase, non-finite gain conversion, non-finite rendered track samples and non-finite master samples. The public WAV encoder independently rejects NaN/Infinity before allocation and quantization. Invalid values are not silently replaced with zero, silence or full-scale PCM. Ordinary finite samples still clip to `[-1,1]` at PCM encoding, preserving prior quantization.
 
 ### Numeric and output-memory boundaries
