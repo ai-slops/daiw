@@ -6,6 +6,8 @@ Completed: identity-based instance note patches, scoped dry-run note-target/impa
 
 ## Stage 0: Headless domain foundation
 
+DSP-execution follow-up completed: owned programs and a persistent resident-source executor now process variable buffers using the shared offline kernel with allocation-free execution, bounded events and sticky numeric faults. Callback publication/retirement, prefetch, incremental compilation and transport-state policies remain. Actual native/platform qualification is deferred until an appropriate environment is available. See [dsp-execution.md](dsp-execution.md).
+
 Desktop native-control follow-up completed: explicit output/device selection and editor transport use sandboxed IPC, verified host renders and a bounded Rust control process with revision/cancellation/lifecycle guards. Browser retains A/B and metering; live DSP and actual Electron/physical-device qualification remain open. See [native-desktop-control.md](native-desktop-control.md).
 
 Signal-compilation follow-up completed: the existing track source/filter/gain-pan paths now lower to a typed bounded graph whose validated edges determine the offline block schedule. General routing, PDC, incremental graph caching and live native graph execution remain open. See [signal-compilation.md](signal-compilation.md).
