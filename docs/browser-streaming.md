@@ -57,6 +57,15 @@ Main-thread suspension or a network stall longer than the scheduled horizon can 
 
 ## Evidence and remaining work
 
+Run the isolated real-backend browser regression with:
+
+```sh
+npm run build
+npm run test:playback-flow
+```
+
+Set `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` when Chromium is installed outside Playwright's default cache. The test starts the production server on an ephemeral loopback port with a temporary data directory, creates a uniquely named QA project, and removes only that owned directory. It verifies direct Play from an unprepared engine, position advance, pause, stop, replay, edit-driven preparation invalidation, successful reprepare, nonzero rendered PCM metadata, successful 206 range responses, reload persistence, a real stale-revision preparation error, and recovery after reload. Screenshots and `runtime-evidence.json` are written under `.artifacts/playback-major-flow/isolated` by default.
+
 Tests cover exact range identities, RMS on odd scan boundaries, lease isolation/file changes, buffer budgets, scheduling adjacency, mapped seek/loop, EOF, deferred preparations, future gain transitions, stale completions and underrun/resume. Host tests prove one full verification for metadata followed by chunk-only reads.
 
 Real Chromium tests played a 175-second fixture for 20 seconds with A/B switches at 5/10/15 seconds, then sought near EOF and stopped normally. All 108 observed WAV requests were ranged 206 responses with render keys; no unexpected console/page errors or alerts occurred. Active unique buffers peaked at 11, while unit tests enforce the all-owned 16-buffer budget. A separate six-second delayed-range scenario paused at frame 48,000, stayed paused after release, and resumed only on explicit Play. These are network/state/scheduling observations, not a claim of audible quality.
