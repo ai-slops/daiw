@@ -2,7 +2,16 @@
 
 This file records evidence, not aspirations. The supplied design remains the product target; the current repository must not be described as having passed every stage-1 acceptance condition.
 
-## Latest follow-up: desktop native playback controls (2026-10-11)
+## Latest follow-up: prepared DSP execution boundary (2026-10-11)
+
+- **356 all-feature Rust**, **122 host/API** and **106 client tests** passed. Full workspace all-feature build/Clippy, formatting and TypeScript/Vite build passed. Relevant DSP source/test LSP diagnostics had no errors; expected native-feature hints and upstream Zod annotation warnings remain. Rust no-excuse checks passed for all **23** changed files.
+- Public API regressions prove owned compilation independent of snapshot lifetime, variable partitions including lengths above 4,096, resampling/filter parity, empty/EOF/reset behavior, source metadata/layout/channel/finite validation, event cap after expansion and zero-frame exceptions. Existing source-read sequence, duplicate tracks, file-backed bytes and WAV golden remain unchanged.
+- Independent review found metadata could change between counting and construction and empty executors initially reported Running. Public compile now uses one successful lookup per asset across both passes and checks the constructed count; empty preparation/reset report Ended immediately. Stateful-provider and EOF regressions passed, and bounded re-review approved the fixes.
+- Allocation instrumentation observes zero allocations and deallocations during success, EOF, a second-chunk fault, repeated fault and reset replay. Runtime errors are numeric Copy values; file I/O and string error conversion remain confined to the offline adapter. No hardware deadline or full process-memory guarantee is inferred from this test.
+- The lead's external Rust crate compiled from a temporary snapshot, processed **7,001 frames** with caller partitions **1/3/4,097/5,000**, and matched offline PCM bit-for-bit for synthesis plus a 32-kHz stereo source. EOF tail and reset replay were exact. A late fault in a **4,097-frame** call zeroed the entire call, retained cursor **4,096** and remained sticky on repeat/reset replay.
+- UI and device adapters were unchanged, so no browser visual or physical-device gate was rerun. Per user direction actual native/Electron qualification is deferred until suitable hardware/display access. Program hot swap/retirement, asynchronous source supply, incremental compilation, seek/loop state restoration and device callback hookup are still outstanding.
+
+## Desktop native playback controls (2026-10-11)
 
 - **344 all-feature Rust**, **122 host/API** and **106 client tests** passed. Full all-feature workspace build/Clippy, Rust formatting and strict TypeScript/Vite build passed. Relevant LSP checks had no errors; pre-existing agent-client Zod deprecation hints and upstream Zod build annotations remain non-blocking.
 - Rust tests exercise bounded JSONL commands, actual file-worker/callback advance, EOF state, selected-device digest/duplicate-name policy, safe startup errors, and shutdown/fatal exit while stdin stays open. Node/Electron tests cover opaque tokens, trusted main-frame IPC, missing binary, revision drift, startup cancellation, slow-close preparation races, worker death/retry, token-preserving session release, IPC disconnects and pipe/protocol limits.
