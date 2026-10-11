@@ -2,7 +2,15 @@
 
 This file records evidence, not aspirations. The supplied design remains the product target; the current repository must not be described as having passed every stage-1 acceptance condition.
 
-## Latest follow-up: prepared DSP execution boundary (2026-10-11)
+## Latest follow-up: bounded DSP publication and retirement (2026-10-11)
+
+- **363 all-feature Rust**, **122 host/API** and **106 client tests** passed. Full workspace all-feature build/Clippy, Rust formatting and TypeScript/Vite build passed; all **five** changed Rust files passed no-excuse checks and relevant LSP checks had no errors. Native-disabled hints and upstream Zod annotation warnings remain non-blocking.
+- Red-first publication tests preceded implementation. Public regressions cover fresh initial/candidate reset with independent offline PCM equality, whole 5,000-frame invocation, build/rate/full failure preservation, queue activation boundaries, retirement saturation/deferred retry, endpoint ordering, explicit shutdown, borrowed scoped threads and sticky-fault recovery by replacement.
+- `stats_alloc` measures zero allocations/deallocations around callback success, empty/EOF, ordinary and deferred swaps, saturation stalls, fresh/sticky fault and reset replay. Channel ownership remains bounded to active/pending/retired/deferred executors; caller/build ownership is additional. No unsafe code, dependency changes or native/UI adapter changes were introduced.
+- The lead ran a separate public-API crate that checked old PCM/cursor after failed build, observed queued-not-active state, full-queue rejection, exact replacement PCM over **4,097 frames**, delayed adoption until control reclamation, zero callback allocation/free, positive control-side reclaim/shutdown deallocation and scoped callback ownership returned to control before teardown. Independent final review approved all ownership and failure branches.
+- Ordinary endpoint destruction is not callback-safe. Enqueue success does not guarantee activation or concurrent endpoint liveness; disconnect detection is best effort. Replacements start at frame zero, with no crossfade, transport continuity, runtime rollback, source prefetch or device integration. Actual native/Electron qualification remains deferred by user direction.
+
+## Prepared DSP execution boundary (2026-10-11)
 
 - **356 all-feature Rust**, **122 host/API** and **106 client tests** passed. Full workspace all-feature build/Clippy, formatting and TypeScript/Vite build passed. Relevant DSP source/test LSP diagnostics had no errors; expected native-feature hints and upstream Zod annotation warnings remain. Rust no-excuse checks passed for all **23** changed files.
 - Public API regressions prove owned compilation independent of snapshot lifetime, variable partitions including lengths above 4,096, resampling/filter parity, empty/EOF/reset behavior, source metadata/layout/channel/finite validation, event cap after expansion and zero-frame exceptions. Existing source-read sequence, duplicate tracks, file-backed bytes and WAV golden remain unchanged.
