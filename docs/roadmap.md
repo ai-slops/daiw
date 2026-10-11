@@ -6,9 +6,9 @@ Completed: identity-based instance note patches, scoped dry-run note-target/impa
 
 ## Stage 0: Headless domain foundation
 
-### Planned agent chat
+### Agent chat integration
 
-Add in-app streaming agent chat with supported ChatGPT subscription-account authentication, dedicated DAIW tools, and resumable workflows. Library selection is pending; this is a requirement, not an implemented integration. Distinguish local/Electron or user-self-hosted deployment from centrally hosted services when validating authentication eligibility, subscription limits and credential storage.
+In-app streaming agent chat now uses `@assistant-ui/react`, the official `openai` SDK for Responses, and `jose` for Sign in with ChatGPT token verification. The host owns protected credentials, persistent account/project-scoped sessions, bounded tool workflows, cancellation, and event replay. Signed provider fixtures and real-browser flows verify the integration; live ChatGPT account authorization and inference still require user-account qualification. Distinguish local/Electron or user-self-hosted deployment from centrally hosted services when validating authentication eligibility, subscription limits and credential storage. See [agent-chat.md](agent-chat.md) for the contract and setup.
 
 Route project inspection, selection, dry-run and proposal creation through existing typed domain capabilities. Preserve human-only approval and stale-revision rejection: model/tool permissions must not grant main-head writes or proposal acceptance. Persist conversation/workflow identity and cancellation/recovery state without storing credentials in project exports. External model use must remain explicit and opt-in. Keep library comparisons and exploratory reports local; record the selected architecture only after a decision.
 
