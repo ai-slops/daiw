@@ -51,6 +51,8 @@ npm run build
 
 All documentation is written in English. See [architecture](docs/architecture.md), [API](docs/api.md), and [verification](docs/verification.md) for supported behavior and validation limits.
 
+The [agent chat guide](docs/agent-chat.md) covers ChatGPT plan sign-in, streaming project tools, protected local credentials, and human-reviewed proposals. Actual account authorization and model availability depend on the user's grant and the provider's preview policy; automated browser verification uses an isolated signed provider fixture.
+
 ## Documentation scope
 
 Track product requirements, architecture/API contracts, reproducible development instructions, the current [remaining-work priorities](docs/progress.md#next-executable-priorities), and durable verification limitations. Keep one-off research reports, agent transcripts, handoffs, screenshots and raw QA output in ignored `.local/` or `.artifacts/`, not in tracked documentation. The verification ledger records supported behavior and qualification gaps; it is not a storage location for raw run artifacts.
