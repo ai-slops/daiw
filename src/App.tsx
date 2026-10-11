@@ -1,10 +1,10 @@
 import { AlertTriangle, X } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { Arrangement } from "./components/Arrangement";
+import { AssistantWorkspace } from "./components/chat/AssistantWorkspace";
 import { Mixer } from "./components/Mixer";
 import { PianoRoll } from "./components/PianoRoll";
 import { ProjectsDialog } from "./components/ProjectsDialog";
-import { ProposalPanel } from "./components/ProposalPanel";
 import { pianoRollSessionKey } from "./components/piano-roll-session";
 import { IconButton } from "./components/primitives";
 import {
@@ -53,6 +53,8 @@ const LoadedStudio = ({ studio, project }: LoadedStudioProps) => {
 	const [projectsOpen, setProjectsOpen] = useState(false);
 	const [timingOpen, setTimingOpen] = useState(false);
 	const fileInput = useRef<HTMLInputElement>(null);
+	const projectIdRef = useRef(project.id);
+	projectIdRef.current = project.id;
 	const audio = useAudio(project);
 	const selected = useMemo(
 		() =>
@@ -188,7 +190,13 @@ const LoadedStudio = ({ studio, project }: LoadedStudioProps) => {
 					/>
 				) : null}
 				{workspace === "assistant" ? (
-					<ProposalPanel
+					<AssistantWorkspace
+						projectId={project.id}
+						projectName={project.name}
+						onProjectChanged={(changedProjectId) => {
+							if (projectIdRef.current === changedProjectId)
+								void studio.openProject(changedProjectId);
+						}}
 						instance={selected}
 						proposals={project.proposals}
 						busy={studio.busy || audio.busy}

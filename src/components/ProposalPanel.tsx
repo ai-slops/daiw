@@ -5,7 +5,7 @@ import type { Instance, Proposal } from "../domain/project";
 import { ProposalComposer } from "./ProposalComposer";
 import { Button, EmptyState, Panel } from "./primitives";
 
-type ProposalPanelProps = {
+export type ProposalPanelProps = {
 	readonly instance: Instance | undefined;
 	readonly proposals: readonly Proposal[];
 	readonly busy: boolean;
@@ -61,7 +61,7 @@ export const ProposalPanel = ({
 
 	if (instance === undefined) {
 		return (
-			<Panel title="Assistant" eyebrow="Local deterministic">
+			<Panel title="Proposal review" eyebrow="Human approval · local fallback">
 				<EmptyState>Select a clip to propose scoped changes.</EmptyState>
 			</Panel>
 		);
@@ -69,8 +69,8 @@ export const ProposalPanel = ({
 
 	return (
 		<Panel
-			title="Assistant"
-			eyebrow="Local deterministic"
+			title="Proposal review"
+			eyebrow="Human approval · local fallback"
 			className="proposal-panel"
 		>
 			<div className="assistant-note">
