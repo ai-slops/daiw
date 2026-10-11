@@ -14,6 +14,8 @@ pub enum AudioError {
     RenderTooLarge { limit_frames: usize },
     #[error("signal graph supports at most {limit} active tracks, received {actual}")]
     TooManyActiveTracks { limit: usize, actual: usize },
+    #[error("DSP program supports at most {limit} prepared events, received {actual}")]
+    TooManyPreparedEvents { limit: usize, actual: usize },
     #[error("signal graph {resource} limit is {limit}, received {actual}")]
     SignalGraphLimitExceeded {
         resource: &'static str,
