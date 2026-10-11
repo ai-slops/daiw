@@ -4,6 +4,7 @@ target/
 data/
 .codegraph/
 .omo/
+.local/
 *.log
 test-results/
 playwright-report/
