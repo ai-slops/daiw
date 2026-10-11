@@ -5,6 +5,7 @@ data/
 .codegraph/
 .omo/
 .local/
+.artifacts/
 *.log
 test-results/
 playwright-report/
