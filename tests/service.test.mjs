@@ -78,6 +78,17 @@ test('stale editing cannot overwrite a successful prior mutation', async (t) => 
   assert.equal(service.store.get(state.id).tempo, 105);
 });
 
+test('queued agent reads enforce their captured revision after an earlier queued mutation', async (t) => {
+  // Given a mutation and an agent read queued from the same captured head.
+  const { service, state } = await fixture(t);
+  const mutation = service.execute({ projectId: state.id, method: 'change.apply', params: { expectedRevision: state.revision, command: { type: 'setTempo', tempo: 111 } } });
+  const read = service.execute({ projectId: state.id, method: 'project.get', params: {}, expectedRevision: state.revision }, 'agent');
+  // When the mutation advances HEAD first, then the queued guard sees the new head.
+  assert.equal((await mutation).ok, true);
+  // Then the model never receives context silently rebased to that later state.
+  await assert.rejects(read, { code: 'StaleRevision', status: 409 });
+});
+
 test('undo checks the caller revision and redo restores the edited tempo', async (t) => {
   // Given one committed tempo change.
   const { service, state } = await fixture(t);

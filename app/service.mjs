@@ -9,7 +9,8 @@ export const rpcSchema = z.object({
   method: z.enum(['project.create', 'project.import', 'project.export', 'project.get', 'project.queryNotes', 'project.validate', 'project.snapshot', 'project.explain', 'project.hash', 'project.history', 'project.cacheStats', 'project.instanceCacheStats', 'change.dryRun', 'change.apply', 'proposal.create', 'proposal.accept', 'proposal.reject', 'project.undo', 'project.redo']),
   params: z.record(z.string(), z.unknown()).default({}),
   idempotencyKey: z.string().min(1).max(160).optional(),
-});
+  expectedRevision: z.string().min(1).max(256).optional(),
+}).strict();
 const queries = new Set(['project.get', 'project.export', 'project.queryNotes', 'project.validate', 'project.snapshot', 'project.explain', 'project.hash', 'project.history', 'project.cacheStats', 'project.instanceCacheStats', 'change.dryRun']);
 const agentMethods = new Set(['project.get', 'project.export', 'project.queryNotes', 'project.validate', 'project.snapshot', 'project.explain', 'project.hash', 'project.history', 'change.dryRun', 'proposal.create']);
 
@@ -25,7 +26,7 @@ export class ProjectService {
     return next;
   }
   async #execute(request, principal) {
-    const { projectId, method, params } = rpcSchema.parse(request);
+    const { projectId, method, params, expectedRevision } = rpcSchema.parse(request);
     if (principal === 'agent' && !agentMethods.has(method)) throw new ServiceError('PermissionDenied', 'Agents can query and propose but cannot change main or approve proposals.', 403);
     const isCreation = method === 'project.create' || method === 'project.import';
     if (!isCreation && !projectId) throw new ServiceError('MissingProject', 'Select a project first.');
@@ -37,6 +38,9 @@ export class ProjectService {
       if (prior) return prior;
     }
     const state = isCreation ? null : this.store.get(projectId);
+    if (state && expectedRevision !== undefined && state.revision !== expectedRevision) {
+      throw new ServiceError('StaleRevision', 'The project changed. Refresh before continuing.', 409);
+    }
     let inputParams = params;
     switch (method) {
       case 'project.undo': inputParams = { ...params, snapshot: this.store.historyTarget(projectId, 'undo') }; break;
