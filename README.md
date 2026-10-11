@@ -29,6 +29,8 @@ On first DIM startup the entrypoint installs missing dependencies and builds mis
 
 For the desktop shell, run `npm run desktop` after building. On Linux this requires Electron's normal desktop shared libraries and a display server. `npm ci --ignore-scripts` skips Electron's binary download; run `node node_modules/electron/install.js` when using that installation mode.
 
+Native desktop output requires the `daiw-play` binary and platform audio development libraries. Build it locally with `npm run native:build`. To use a binary outside `target/debug`, set `DAIW_PLAY_BINARY` to its absolute path before starting the desktop app.
+
 ```sh
 npm run core:test
 npm run test:server
