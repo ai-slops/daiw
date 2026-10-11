@@ -6,6 +6,14 @@ Completed: identity-based instance note patches, scoped dry-run note-target/impa
 
 ## Stage 0: Headless domain foundation
 
+### Planned agent chat
+
+Add in-app streaming agent chat with supported ChatGPT subscription-account authentication, dedicated DAIW tools, and resumable workflows. Library selection is pending; this is a requirement, not an implemented integration. Distinguish local/Electron or user-self-hosted deployment from centrally hosted services when validating authentication eligibility, subscription limits and credential storage.
+
+Route project inspection, selection, dry-run and proposal creation through existing typed domain capabilities. Preserve human-only approval and stale-revision rejection: model/tool permissions must not grant main-head writes or proposal acceptance. Persist conversation/workflow identity and cancellation/recovery state without storing credentials in project exports. External model use must remain explicit and opt-in. Keep library comparisons and exploratory reports local; record the selected architecture only after a decision.
+
+### Implemented foundations
+
 DSP-execution and publication follow-ups completed: owned programs and a persistent resident-source executor process variable buffers using the shared offline kernel; bounded SPSC handoff activates fresh executors at callback boundaries and defers destruction to control. Build/publication failures preserve last-valid playback. Prefetch, incremental compilation, continuous/seek/loop transport state and device callback integration remain. Actual native/platform qualification is deferred until an appropriate environment is available. See [dsp-execution.md](dsp-execution.md).
 
 Desktop native-control follow-up completed: explicit output/device selection and editor transport use sandboxed IPC, verified host renders and a bounded Rust control process with revision/cancellation/lifecycle guards. Browser retains A/B and metering; live DSP and actual Electron/physical-device qualification remain open. See [native-desktop-control.md](native-desktop-control.md).
