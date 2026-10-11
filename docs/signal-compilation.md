@@ -1,6 +1,6 @@
 # Bounded signal compilation
 
-The offline renderer now lowers every non-empty validated playback snapshot into a crate-private typed signal graph before processing audio blocks. This is the first compiled signal contract; it makes topology, execution order, buffer ownership, latency and provenance explicit without adding a canonical project graph or changing the snapshot wire format.
+The offline renderer lowers every non-empty validated playback snapshot into a crate-private typed signal graph before processing audio blocks. The graph remains private, while its owned `CompiledDspProgram` now also supports a prepared resident-source executor. This makes topology, execution order, buffer ownership, latency and provenance explicit without adding a canonical project graph or changing the snapshot wire format. See [dsp-execution.md](dsp-execution.md) for the public execution boundary.
 
 ## Fixed graph contract
 
